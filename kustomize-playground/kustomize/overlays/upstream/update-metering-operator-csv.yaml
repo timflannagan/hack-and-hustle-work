@@ -1,0 +1,35 @@
+- op: replace
+  path: /spec/install/spec/deployments/0/spec/template/spec/containers/0/image
+  value: quay.io/coreos/metering-ansible-operator:release-4.6
+- op: replace
+  path: /spec/install/spec/deployments/0/spec/template/spec/containers/1/image
+  value: quay.io/coreos/metering-ansible-operator:release-4.6
+- op: replace
+  path: /metadata/annotations/containerImage
+  value: quay.io/coreos/metering-ansible-operator:release-4.6
+# Pretty gross but should get the job done
+- op: replace
+  path: /spec/install/spec/deployments/0/spec/template/spec/containers/1/env/1/value
+  value: "true"
+- op: replace
+  path: /spec/install/spec/deployments/0/spec/template/spec/containers/1/env/4/value
+  value: "quay.io/coreos/metering-ansible-operator:release-4.6"
+- op: replace
+  path: /spec/install/spec/deployments/0/spec/template/spec/containers/1/env/5/value
+  value: "quay.io/coreos/metering-reporting-operator:release-4.6"
+- op: replace
+  path: /spec/install/spec/deployments/0/spec/template/spec/containers/1/env/6/value
+  value: "quay.io/coreos/metering-presto:release-4.6"
+- op: replace
+  path: /spec/install/spec/deployments/0/spec/template/spec/containers/1/env/7/value
+  value: "quay.io/coreos/metering-hive:release-4.6"
+- op: replace
+  path: /spec/install/spec/deployments/0/spec/template/spec/containers/1/env/8/value
+  value: "quay.io/coreos/metering-hadoop:release-4.6"
+- op: replace
+  path: /spec/install/spec/deployments/0/spec/template/spec/containers/1/env/9/value
+  value: "quay.io/coreos/metering-ghostunnel:release-4.6"
+# Replace all openshift-specific information
+- op: replace
+  path: /spec/links/0/url
+  value: https://github.com/kube-reporting/metering-operator/blob/master/Documentation/index.md

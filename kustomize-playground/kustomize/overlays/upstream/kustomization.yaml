@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namePrefix: upstream-
+commonLabels:
+  catalog: upstream
+bases:
+- ../../base
+# Note: it looks like I can't just specify a patch with the
+# intention of just replacing the images that the environment
+# variables references as Kustomize doesn't have the ability to
+# strategically merge non-native k8s resources together. I would
+# this is due a limitation in the internal packages they're calling
+# as it looks like SMP is being phased out in favor of server-side apply.
+patchesJson6902:
+- path: update-metering-operator-csv.yaml
+  target:
+    group: operators.coreos.com
+    version: v1alpha1
+    kind: ClusterServiceVersion
+    name: metering-operator.v4.6.0
+    namespace: placeholder
+
+patchesStrategicMerge:
+- update-metering-operator-deployment.yaml
