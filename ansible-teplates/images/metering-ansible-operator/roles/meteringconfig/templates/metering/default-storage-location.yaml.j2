@@ -1,0 +1,16 @@
+{% if (meteringconfig_spec['openshift-reporting'].spec.defaultStorageLocation.enabled == true) %}
+apiVersion: metering.openshift.io/v1
+kind: StorageLocation
+metadata:
+  name: {{ meteringconfig_spec['openshift-reporting'].spec.defaultStorageLocation.name }}
+  labels:
+    operator-metering: "true"
+{% if (meteringconfig_spec['openshift-reporting'].spec.defaultStorageLocation.isDefault == true) %}
+  annotations:
+    storagelocation.metering.openshift.io/is-default: "true"
+{% endif %}
+spec:
+{% if meteringconfig_spec['openshift-reporting'].spec.defaultStorageLocation.type == "hive" %}
+  hive: {{ meteringconfig_spec['openshift-reporting'].spec.defaultStorageLocation.hive }}
+{% endif %}
+{% endif %}

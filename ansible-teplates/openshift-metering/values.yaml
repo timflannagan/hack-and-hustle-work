@@ -1,0 +1,1003 @@
+global:
+  ownerReferences: []
+
+unsupportedFeatures:
+  enableHDFS: false
+
+disableOCPFeatures: false
+
+useIPV6Networking: false
+
+networking:
+  useGlobalProxyNetworking: false
+  proxy:
+    config:
+      http_proxy:
+        url: ""
+        hostname: ""
+        port: ""
+        username: ""
+        password: ""
+      https_proxy:
+        url: ""
+        hostname: ""
+        port: ""
+        username: ""
+        password: ""
+      no_proxy: ""
+      trusted_ca_bundle: ""
+
+storage:
+  type: "hive"
+  hive: {}
+
+  # Below is an example of what configuring storage could look like:
+  #
+  # hive:
+  #   type: "hdfs"
+  #   hdfs:
+  #     namenode: "hdfs-namenode-0.hdfs-namenode:9820"
+
+  # hive:
+  #   type: "s3"
+  #   s3:
+  #     bucket: "bucketname/path/"
+  #     secretName: "my-aws-secret"
+  #     createBucket: true
+  #     region: "us-west-1"
+
+  # hive:
+  #   type: "sharedPVC"
+  #   sharedPVC:
+  #     claimName: "metering-nfs"
+  #     createPVC: true
+  #     storageClass: null
+  #     size: 5Gi
+  #     mountPath: "/"
+
+tls:
+  enabled: true
+  # the name of the secret containing root CA key/cert
+  certificate: ""
+  key: ""
+  secretName: "metering-operator-root-ca"
+
+permissions:
+  meteringAdmins: []
+  meteringViewers: []
+  reportExporters: []
+  reportingAdmins: []
+  reportingViewers: []
+
+monitoring:
+  createRBAC: true
+  enabled: true
+  namespace: openshift-monitoring
+
+openshift-reporting:
+  spec:
+    defaultStorageLocation:
+      enabled: true
+      isDefault: true
+      name: hive
+      type: hive
+      hive:
+        databaseName: metering
+        unmanagedDatabase: false
+
+    awsBillingReportDataSource:
+      enabled: false
+
+    defaultReportDataSources:
+      base:
+        enabled: true
+        items:
+          # views
+          - name: cluster-cpu-capacity-raw
+            spec:
+              reportQueryView:
+                queryName: cluster-cpu-capacity-raw
+          - name: cluster-cpu-usage-raw
+            spec:
+              reportQueryView:
+                queryName: cluster-cpu-usage-raw
+          - name: cluster-memory-capacity-raw
+            spec:
+              reportQueryView:
+                queryName: cluster-memory-capacity-raw
+          - name: cluster-memory-usage-raw
+            spec:
+              reportQueryView:
+                queryName: cluster-memory-usage-raw
+          - name: node-cpu-allocatable-raw
+            spec:
+              reportQueryView:
+                queryName: node-cpu-allocatable-raw
+          - name: node-cpu-capacity-raw
+            spec:
+              reportQueryView:
+                queryName: node-cpu-capacity-raw
+          - name: node-memory-allocatable-raw
+            spec:
+              reportQueryView:
+                queryName: node-memory-allocatable-raw
+          - name: node-memory-capacity-raw
+            spec:
+              reportQueryView:
+                queryName: node-memory-capacity-raw
+          - name: persistentvolumeclaim-capacity-raw
+            spec:
+              reportQueryView:
+                queryName: persistentvolumeclaim-capacity-raw
+          - name: persistentvolumeclaim-phase-raw
+            spec:
+              reportQueryView:
+                queryName: persistentvolumeclaim-phase-raw
+          - name: persistentvolumeclaim-request-raw
+            spec:
+              reportQueryView:
+                queryName: persistentvolumeclaim-request-raw
+          - name: persistentvolumeclaim-usage-raw
+            spec:
+              reportQueryView:
+                queryName: persistentvolumeclaim-usage-raw
+          - name: persistentvolumeclaim-usage-with-phase-raw
+            spec:
+              reportQueryView:
+                queryName: persistentvolumeclaim-usage-with-phase-raw
+          - name: pod-cpu-request-raw
+            spec:
+              reportQueryView:
+                queryName: pod-cpu-request-raw
+          - name: pod-cpu-usage-raw
+            spec:
+              reportQueryView:
+                queryName: pod-cpu-usage-raw
+          - name: pod-memory-request-raw
+            spec:
+              reportQueryView:
+                queryName: pod-memory-request-raw
+          - name: pod-memory-usage-raw
+            spec:
+              reportQueryView:
+                queryName: pod-memory-usage-raw
+
+          # metrics importers
+          - name: node-allocatable-cpu-cores
+            spec:
+              prometheusMetricsImporter:
+                query: |
+                  kube_node_status_allocatable_cpu_cores * on(node) group_left(provider_id) max(kube_node_info) by (node, provider_id)
+          - name: node-allocatable-memory-bytes
+            spec:
+              prometheusMetricsImporter:
+                query: |
+                  kube_node_status_allocatable_memory_bytes * on(node) group_left(provider_id) max(kube_node_info) by (node, provider_id)
+          - name: node-capacity-cpu-cores
+            spec:
+              prometheusMetricsImporter:
+                query: |
+                  kube_node_status_capacity_cpu_cores * on(node) group_left(provider_id) max(kube_node_info) by (node, provider_id)
+          - name: node-capacity-memory-bytes
+            spec:
+              prometheusMetricsImporter:
+                query: |
+                  kube_node_status_capacity_memory_bytes * on(node) group_left(provider_id) max(kube_node_info) by (node, provider_id)
+          - name: persistentvolumeclaim-capacity-bytes
+            spec:
+              prometheusMetricsImporter:
+                query: |
+                  kubelet_volume_stats_capacity_bytes
+          - name: persistentvolumeclaim-phase
+            spec:
+              prometheusMetricsImporter:
+                query: |
+                  kube_persistentvolumeclaim_status_phase
+          - name: persistentvolumeclaim-request-bytes
+            spec:
+              prometheusMetricsImporter:
+                query: |
+                  max(kube_persistentvolumeclaim_resource_requests_storage_bytes) by (namespace, persistentvolumeclaim) + on (namespace, persistentvolumeclaim) group_left(storageclass, volumename) sum(kube_persistentvolumeclaim_info{volumename!=""}) by (namespace, persistentvolumeclaim, storageclass, volumename) * 0
+          - name: persistentvolumeclaim-usage-bytes
+            spec:
+              prometheusMetricsImporter:
+                query: |
+                  kubelet_volume_stats_used_bytes
+          - name: pod-limit-cpu-cores
+            spec:
+              prometheusMetricsImporter:
+                query: |
+                  sum(kube_pod_container_resource_limits_cpu_cores) by (pod, namespace, node)
+          - name: pod-limit-memory-bytes
+            spec:
+              prometheusMetricsImporter:
+                query: |
+                  sum(kube_pod_container_resource_limits_memory_bytes) by (pod, namespace, node)
+          - name: pod-persistentvolumeclaim-request-info
+            spec:
+              prometheusMetricsImporter:
+                query: |
+                  kube_pod_spec_volumes_persistentvolumeclaims_info
+          - name: pod-request-cpu-cores
+            spec:
+              prometheusMetricsImporter:
+                query: |
+                  sum(kube_pod_container_resource_requests_cpu_cores) by (pod, namespace, node)
+          - name: pod-request-memory-bytes
+            spec:
+              prometheusMetricsImporter:
+                query: |
+                  sum(kube_pod_container_resource_requests_memory_bytes) by (pod, namespace, node)
+
+      postKube_1_14:
+        enabled: true
+        items:
+          - name: pod-usage-cpu-cores
+            spec:
+              prometheusMetricsImporter:
+                query: |
+                  sum(rate(container_cpu_usage_seconds_total{container!="POD",container!="",pod!=""}[5m])) BY (pod, namespace, node)
+          - name: pod-usage-memory-bytes
+            spec:
+              prometheusMetricsImporter:
+                query: |
+                  sum(container_memory_usage_bytes{container!="POD", container!="",pod!=""}) by (pod, namespace, node)
+
+      preKube_1_14:
+        items:
+          - name: pod-usage-cpu-cores
+            spec:
+              prometheusMetricsImporter:
+                query: |
+                  label_replace(sum(rate(container_cpu_usage_seconds_total{container_name!="POD",container_name!="",pod_name!=""}[5m])) BY (pod_name, namespace, node), "pod", "$1", "pod_name", "(.*)")
+          - name: pod-usage-memory-bytes
+            spec:
+              prometheusMetricsImporter:
+                query: |
+                  label_replace(sum(container_memory_usage_bytes{container_name!="POD", container_name!="",pod_name!=""}) by (pod_name, namespace, node), "pod", "$1", "pod_name", "(.*)")
+
+reporting-operator:
+  spec:
+    affinity: {}
+    annotations: {}
+    labels: {}
+    nodeSelector: {}
+    tolerations: []
+    replicas: 1
+
+    image:
+      pullPolicy: Always
+      defaultRepository: quay.io/openshift/origin-metering-reporting-operator
+      defaultTag: "4.6"
+      defaultOverride: null
+      repository: null
+      tag: null
+      pullSecrets: []
+
+    updateStrategy:
+      type: RollingUpdate
+
+    resources:
+      limits:
+        cpu: 1
+        memory: 500Mi
+      requests:
+        cpu: 500m
+        memory: 100Mi
+
+    config:
+      allNamespaces: false
+      enableFinalizers: false
+      leaderLeaseDuration: "60s"
+
+      logDDLQueries: false
+      logDMLQueries: false
+      logReports: false
+      logLevel: info
+
+      aws:
+        accessKeyID: ""
+        secretAccessKey: ""
+        createSecret: false
+        secretName: ""
+
+      hive:
+        host: null
+        tls:
+          # CA for the client cert
+          caCertificate: ""
+
+          createSecret: false
+          enabled: false
+          secretName: ""
+        auth:
+          # client cert
+          certificate: ""
+          # client private key
+          key: ""
+
+          createSecret: false
+          enabled: false
+          secretName: ""
+
+      presto:
+        host: presto:8080
+        maxQueryLength: null
+
+        tls:
+          # CA for the server cert
+          caCertificate: ""
+
+          createSecret: false
+          enabled: false
+          secretName: ""
+        auth:
+          # client cert
+          certificate: ""
+          # client private key
+          key: ""
+
+          createSecret: false
+          enabled: false
+          secretName: ""
+
+      prometheus:
+        url: ""
+
+        certificateAuthority:
+          useServiceAccountCA: true
+          configMap:
+            create: false
+            enabled: false
+            filename: ""
+            name: reporting-operator-certificate-authority-config
+            value: ""
+
+        metricsImporter:
+          enabled: true
+          auth:
+            useServiceAccountToken: true
+            tokenSecret:
+              create: false
+              enabled: false
+              name: reporting-operator-prometheus-bearer-secrets
+              value: ""
+          config:
+            chunkSize: 5m
+            pollInterval: 5m
+            stepSize: 60s
+            importFrom: null
+            maxImportBackfillDuration: null
+            maxQueryRangeDuration: null
+
+      tls:
+        api:
+          # server cert
+          certificate: ""
+          # server private key
+          key: ""
+          # CA for the server cert
+          caCertificate: ""
+
+          createSecret: false
+          # default enabled because we expect the cert to be created by the
+          # service serving cert controller.
+          enabled: true
+          secretName: reporting-operator-api-tls-secrets
+
+    rbac:
+      createClusterMonitoringViewRBAC: true
+
+    livenessProbe:
+      failureThreshold: 5
+      initialDelaySeconds: 120
+      periodSeconds: 60
+      successThreshold: 1
+      timeoutSeconds: 60
+
+      httpGet:
+        path: /healthy
+        port: 8080
+        scheme: HTTP
+
+    readinessProbe:
+      failureThreshold: 3
+      initialDelaySeconds: 60
+      periodSeconds: 60
+      successThreshold: 1
+      timeoutSeconds: 60
+
+      httpGet:
+        path: /ready
+        port: 8080
+        scheme: HTTP
+
+    apiService:
+      annotations:
+        service.alpha.openshift.io/serving-cert-secret-name: reporting-operator-api-tls-secrets
+      nodePort: null
+      type: ClusterIP
+
+    route:
+      enabled: true
+      name: metering
+
+    authProxy:
+      enabled: false
+
+      image:
+        pullPolicy: Always
+        defaultRepository: quay.io/openshift/origin-oauth-proxy
+        defaultTag: "4.6"
+        defaultOverride: null
+        repository: null
+        tag: null
+        pullSecrets: []
+
+      authenticatedEmails:
+        enabled: false
+        data: ""
+        createSecret: true
+        secretName: reporting-operator-auth-proxy-authenticated-emails
+
+      cookie:
+        seed: ""
+        createSecret: true
+        secretName: reporting-operator-auth-proxy-cookie-seed
+
+      delegateURLs:
+        enabled: true
+        policy: '{"/": {"group": "metering.openshift.io", "resource": "reports", "namespace": "$(NAMESPACE)", "subresource": "export", "verb": "get"}}'
+
+      subjectAccessReview:
+        enabled: true
+        policy: '{"group": "metering.openshift.io", "resource": "reports", "namespace": "$(NAMESPACE)", "subresource": "export", "verb": "get"}'
+
+      htpasswd:
+        data: ""
+        createSecret: true
+        secretName: reporting-operator-auth-proxy-htpasswd
+
+      rbac:
+        createAuthProxyClusterRole: true
+
+      resources:
+        limits:
+          cpu: 500m
+          memory: 100Mi
+        requests:
+          cpu: 100m
+          memory: 50Mi
+
+    securityContext:
+      fsGroup: null
+      runAsNonRoot: true
+
+presto:
+  spec:
+    labels: {}
+
+    image:
+      pullPolicy: Always
+      defaultRepository: quay.io/openshift/origin-metering-presto
+      defaultTag: "4.6"
+      defaultOverride: null
+      repository: null
+      tag: null
+
+    config:
+      environment: production
+      nodeSchedulerIncludeCoordinator: true
+      maxQueryLength: "10000000"
+
+      aws:
+        accessKeyID: ""
+        secretAccessKey: ""
+        createSecret: false
+        secretName: ""
+        region: ""
+
+      azure:
+        storageAccountName: ""
+        secretAccessKey: ""
+        createSecret: false
+        secretName: ""
+
+      gcs:
+        createSecret: false
+        secretName: ""
+        serviceAccountKeyJSON: ""
+
+      s3Compatible:
+        secretName: ""
+        createSecret: ""
+        accessKeyID: ""
+        secretAccessKey: ""
+        endpoint: ""
+        ca:
+          secretName: ""
+          createSecret: false
+          content: ""
+
+      tls:
+        # server cert
+        certificate: ""
+        # server private key
+        key: ""
+        # CA for the server cert
+        caCertificate: ""
+
+        createSecret: false
+        enabled: false
+        secretName: ""
+
+      auth:
+        # client cert
+        certificate: ""
+        # client private key
+        key: ""
+        # CA for the client cert
+        caCertificate: ""
+
+        createSecret: false
+        enabled: false
+        secretName: ""
+
+      connectors:
+        hive:
+          hadoopConfigSecretName: hadoop-config
+          useHadoopConfig: true
+
+          metastoreURI: null
+          metastoreTimeout: null
+
+          tls:
+            # client cert
+            certificate: ""
+            # client private key
+            key: ""
+            # CA for metastore
+            caCertificate: ""
+
+            createSecret: false
+            enabled: false
+            secretName: ""
+          s3:
+            useInstanceCredentials: null
+
+        extraConnectorFiles: []
+        prometheus:
+          enabled: false
+          config:
+            uri: ""
+            chunkSizeDuration: null
+            maxQueryRangeDuration: null
+            cacheDuration: null
+          auth:
+            bearerTokenFile: null
+            useServiceAccountToken: true
+
+    coordinator:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - presto
+            topologyKey: kubernetes.io/hostname
+      nodeSelector: {}
+      tolerations: []
+      terminationGracePeriodSeconds: 30
+
+      config:
+        jvm:
+          G1HeapRegionSize: null
+          concGCThreads: null
+          extraFlags: []
+          initiatingHeapOccupancyPercent: null
+          maxGcPauseMillis: null
+          parallelGCThreads: null
+          initialRAMPercentage: "50.0"
+          maxRAMPercentage: "50.0"
+          minRAMPercentage: null
+          permSize: null
+          reservedCodeCacheSize: null
+          maxCachedBufferSize: null
+          maxDirectMemorySize: null
+        logLevel: info
+        taskMaxWorkerThreads: null
+        taskMinDrivers: null
+
+      resources:
+        limits:
+          cpu: 4
+          memory: 4Gi
+        requests:
+          cpu: 2
+          memory: 2Gi
+
+    securityContext:
+      fsGroup: null
+      runAsNonRoot: true
+
+    worker:
+      replicas: 0
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - presto
+            topologyKey: kubernetes.io/hostname
+      nodeSelector: {}
+      terminationGracePeriodSeconds: 30
+      tolerations: []
+
+      config:
+        jvm:
+          G1HeapRegionSize: null
+          concGCThreads: null
+          extraFlags: []
+          initiatingHeapOccupancyPercent: null
+          maxGcPauseMillis: null
+          parallelGCThreads: null
+          initialRAMPercentage: "50.0"
+          maxRAMPercentage: "50.0"
+          minRAMPercentage: null
+          permSize: null
+          reservedCodeCacheSize: null
+          maxCachedBufferSize: null
+          maxDirectMemorySize: null
+        logLevel: info
+        taskMaxWorkerThreads: null
+        taskMinDrivers: null
+
+      resources:
+        limits:
+          cpu: 8
+          memory: 8Gi
+        requests:
+          cpu: 4
+          memory: 2Gi
+
+hive:
+  spec:
+    labels: {}
+    annotations: {}
+    terminationGracePeriodSeconds: 30
+
+    config:
+      metastoreClientSocketTimeout: null
+      metastoreWarehouseDir: null
+
+      defaultFileFormat: orc
+
+      hadoopConfigSecretName: hadoop-config
+      useHadoopConfig: true
+
+      db:
+        driver: org.apache.derby.jdbc.EmbeddedDriver
+        password: null
+        url: jdbc:derby:;databaseName=/var/lib/hive/data;create=true
+        username: null
+        secretName: ""
+
+        autoCreateMetastoreSchema: true
+        enableMetastoreSchemaVerification: false
+
+      aws:
+        accessKeyID: ""
+        secretAccessKey: ""
+        createSecret: false
+        secretName: ""
+
+      azure:
+        storageAccountName: ""
+        secretAccessKey: ""
+        createSecret: false
+        secretName: ""
+
+      gcs:
+        createSecret: false
+        secretName: ""
+        serviceAccountKeyJSON: ""
+
+      s3Compatible:
+        secretName: ""
+        createSecret: ""
+        accessKeyID: ""
+        secretAccessKey: ""
+        endpoint: ""
+        ca:
+          secretName: ""
+          createSecret: false
+          content: ""
+
+      sharedVolume:
+        enabled: false
+        mountPath: /user/hive/warehouse
+
+        createPVC: false
+        claimName: hive-warehouse-data
+        size: 5Gi
+        storageClass: null
+
+    image:
+      pullPolicy: Always
+      defaultRepository: quay.io/openshift/origin-metering-hive
+      defaultTag: "4.6"
+      defaultOverride: null
+      repository: null
+      tag: null
+      pullSecrets: []
+
+    metastore:
+      affinity: {}
+      nodeSelector: {}
+      tolerations: []
+
+      config:
+        logLevel: info
+        jvm:
+          initialRAMPercentage: null
+          maxRAMPercentage: null
+          minRAMPercentage: null
+
+        tls:
+          # server cert
+          certificate: ""
+          # server private key
+          key: ""
+          # CA for the server cert
+          caCertificate: ""
+
+          enabled: false
+          createSecret: false
+          secretName: ""
+
+        auth:
+          enabled: false
+
+      resources:
+        limits:
+          cpu: 4
+          memory: 2Gi
+        requests:
+          cpu: 500m
+          memory: 650Mi
+      storage:
+        class: null
+        create: true
+        size: 5Gi
+
+      livenessProbe:
+        tcpSocket:
+          port: 9083
+        failureThreshold: 3
+        initialDelaySeconds: 90
+        periodSeconds: 30
+        successThreshold: 1
+        timeoutSeconds: 15
+
+      readinessProbe:
+        tcpSocket:
+          port: 9083
+        failureThreshold: 3
+        initialDelaySeconds: 60
+        periodSeconds: 20
+        successThreshold: 1
+        timeoutSeconds: 15
+
+    server:
+      affinity: {}
+      nodeSelector: {}
+      tolerations: []
+
+      config:
+        logLevel: info
+        jvm:
+          initialRAMPercentage: null
+          maxRAMPercentage: null
+          minRAMPercentage: null
+
+        tls:
+          # server cert
+          certificate: ""
+          # server private key
+          key: ""
+          # CA for the server cert
+          caCertificate: ""
+
+          enabled: false
+          createSecret: false
+          secretName: ""
+
+        auth:
+          enabled: false
+
+        metastoreTLS:
+          # TLS options for connecting to hive-metastore from hive-server
+          # client cert
+          certificate: ""
+          # client private key
+          key: ""
+          # CA for the client cert
+          caCertificate: ""
+
+          enabled: false
+          createSecret: false
+          secretName: ""
+
+      resources:
+        limits:
+          cpu: 1
+          memory: 1Gi
+        requests:
+          cpu: 500m
+          memory: 500Mi
+
+      livenessProbe:
+        tcpSocket:
+          port: 10000
+        failureThreshold: 3
+        initialDelaySeconds: 300
+        periodSeconds: 30
+        successThreshold: 1
+        timeoutSeconds: 15
+
+      readinessProbe:
+        tcpSocket:
+          port: 10000
+        failureThreshold: 3
+        initialDelaySeconds: 60
+        periodSeconds: 20
+        successThreshold: 1
+        timeoutSeconds: 15
+
+    securityContext:
+      fsGroup: null
+      runAsNonRoot: true
+
+__ghostunnel:
+  image:
+    pullPolicy: Always
+    defaultRepository: quay.io/openshift/origin-ghostunnel
+    defaultTag: "4.6"
+    defaultOverride: null
+    repository: null
+    tag: null
+
+hadoop:
+  spec:
+    configSecretName: hadoop-config
+
+    config:
+      defaultFS: hdfs://hdfs-namenode-0.hdfs-namenode:9820
+
+      aws:
+        accessKeyID: ""
+        secretAccessKey: ""
+        createSecret: false
+        secretName: ""
+        region: ""
+
+      azure:
+        storageAccountName: ""
+        secretAccessKey: ""
+        createSecret: false
+        secretName: ""
+
+      gcs:
+        createSecret: false
+        secretName: ""
+        serviceAccountKeyJSON: ""
+
+      s3Compatible:
+        secretName: ""
+        createSecret: ""
+        accessKeyID: ""
+        secretAccessKey: ""
+        endpoint: ""
+        ca:
+          secretName: ""
+          createSecret: false
+          content: ""
+
+    image:
+      pullPolicy: Always
+      defaultRepository: quay.io/openshift/origin-metering-hadoop
+      defaultTag: "4.6"
+      defaultOverride: null
+      repository: null
+      tag: null
+      pullSecrets: null
+
+    hdfs:
+      enabled: false
+      config:
+        datanodeDataDirPerms: "775"
+        replicationFactor: 3
+        logLevel: info
+
+      datanode:
+        annotations: {}
+        labels: {}
+        nodeSelector: {}
+        tolerations: []
+        terminationGracePeriodSeconds: 30
+        replicas: 1
+
+        config:
+          jvm:
+            initialRAMPercentage: null
+            maxRAMPercentage: null
+            minRAMPercentage: null
+
+        resources:
+          limits:
+            cpu: 1
+            memory: 1Gi
+          requests:
+            cpu: 250m
+            memory: 500Mi
+
+        storage:
+          class: null
+          size: 5Gi
+
+        affinity:
+          podAntiAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - hdfs-datanode
+              topologyKey: kubernetes.io/hostname
+
+      namenode:
+        annotations: {}
+        labels: {}
+        nodeSelector: {}
+        terminationGracePeriodSeconds: 30
+        tolerations: []
+
+        config:
+          jvm:
+            initialRAMPercentage: null
+            maxRAMPercentage: null
+            minRAMPercentage: null
+
+        resources:
+          limits:
+            cpu: 2
+            memory: 2Gi
+          requests:
+            cpu: 500m
+            memory: 500Mi
+
+        storage:
+          class: null
+          size: 5Gi
+
+        affinity:
+          podAntiAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - hdfs-namenode
+              topologyKey: kubernetes.io/hostname
+
+      securityContext:
+        fsGroup: null
+        runAsNonRoot: true

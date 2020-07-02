@@ -1,0 +1,106 @@
+---
+
+- name: Helm template resources
+  block:
+  - shell: helm template {{ meteringconfig_chart_path }} --name {{ meta.name }} --namespace {{ meta.namespace}} -x {{ resource.template_file }} -f {{ values_file }}
+    loop: "{{ resources }}"
+    loop_control:
+      loop_var: resource
+      label: "{{ resource.template_file }}"
+    when: resource.create | default(true)
+    no_log: "{{ not meteringconfig_log_helm_template }}"
+    register: template_results
+  rescue:
+  - include_tasks: update_meteringconfig_status.yml
+    vars:
+      failed_result: "{{ ansible_failed_result.results | first }}"
+      end_play_after_updating_status: true
+      current_conditions:
+        type: "Invalid"
+        status: "True"
+        message: |-
+          "{{ failed_result.stderr | to_nice_yaml }}"
+        lastTransitionTime: "{{ now(utc=False).isoformat() + 'Z' }}"
+    when:
+    - ansible_failed_result is defined
+    - ansible_failed_result.results is defined
+    - ansible_failed_result.results | length > 0
+
+- name: Add prune label to resources
+  vars:
+    # Index into the template_results.results array to get the result of
+    # the shell task above that corresponds to this resource
+    template_result: "{{ template_results.results[index] }}"
+    # Next we take the stdout returned by the shell command executing helm
+    # template, which contains the list of resources produced by the given
+    # template file.
+    # After that, use `from_yaml_all` to parse the yaml, and use `list` to
+    # put it into a list in case we got a single resource returned by helm
+    # template.
+    # We use difference to filter out null items in the list, since
+    # sometimes there are empty resources templated.
+    # Finally, once we have a list of resources, use map to run
+    # the combine function on each resource, which adds the prune label to
+    # each item in the list, storing the result in new_resources
+    new_resources: "{{ template_result.stdout | from_yaml_all | list | difference([None]) | map('combine', {'metadata':{'labels':{meteringconfig_prune_label_key: resource.prune_label_value, meteringconfig_prune_namespace_label_key: meta.namespace}}}, recursive=True) | list }}"
+  set_fact:
+    # Create a new variable to contain the updated resources with prune
+    # labels, and append the updated resources to it each iteration of this
+    # loop.
+    updated_template_results: "{{ (updated_template_results | default([])) + [ new_resources ] }}"
+  loop: "{{ resources }}"
+  loop_control:
+    index_var: index
+    loop_var: resource
+    label: "{{ resource.template_file }}"
+  when: template_result.changed and resource is not none
+  no_log: true
+
+- name: Create resources
+  block:
+  - k8s:
+      state: present
+      namespace: "{{ meta.namespace }}"
+      definition: "{{ updated_template_results | flatten }}"
+      merge_type: ['merge', 'strategic-merge']
+  rescue:
+    # Note for ansible_failed_return:
+    # there's no guarantee that more fields besides msg will be available
+    # as the return object varies depending on the type of error encountered
+  - include_tasks: update_meteringconfig_status.yml
+    vars:
+      current_conditions:
+        type: "Invalid"
+        status: "True"
+        message: |
+          "{{ ansible_failed_result.msg }}"
+        lastTransitionTime: "{{ now(utc=False).isoformat() + 'Z' }}"
+      end_play_after_updating_status: true
+    when:
+    - ansible_failed_result is defined
+    - ansible_failed_result.msg | length > 0
+  when: template_results.changed and resource is not none
+
+- name: Prune resources
+  block:
+  - include_tasks: prune_resources.yml
+    vars:
+      namespace: "{{ meta.namespace }}"
+    loop: "{{ resources }}"
+    loop_control:
+      loop_var: resource
+      label: "{{ resource.template_file }}"
+  rescue:
+  - include_tasks: update_meteringconfig_status.yml
+    vars:
+      current_conditions:
+        type: "Invalid"
+        status: "True"
+        message: |
+          "{{ ansible_failed_result.msg }}"
+        lastTransitionTime: "{{ now(utc=False).isoformat() + 'Z' }}"
+      end_play_after_updating_status: true
+    when:
+    - ansible_failed_result is defined
+    - ansible_failed_result.msg | length > 0
+  when: not (resource.create | default(true))

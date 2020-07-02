@@ -1,0 +1,24 @@
+---
+# task file for the MeteringConfig role
+
+- name: Dump out the storagelocation resource
+  debug:
+    msg: "Out: {{ lookup('template', 'default-storage-location.yaml.j2') | from_yaml }}"
+
+# - include_tasks: update_meteringconfig_status.yml
+#   vars:
+#     current_conditions:
+#       type: "Running"
+#       status: "True"
+#       message: "Starting the reconciliation process"
+#       lastTransitionTime: "{{ now(utc=False).isoformat() + 'Z' }}"
+
+# - include_tasks: reconcile.yml
+
+# - include_tasks: update_meteringconfig_status.yml
+#   vars:
+#     current_conditions:
+#       type: "Running"
+#       status: "False"
+#       message: "Awaiting the next reconciliation"
+#       lastTransitionTime: "{{ now(utc=False).isoformat() + 'Z' }}"

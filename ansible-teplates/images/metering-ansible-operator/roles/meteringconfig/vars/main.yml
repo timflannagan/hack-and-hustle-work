@@ -1,0 +1,703 @@
+---
+
+# contains the users overrides
+meteringconfig_spec_overrides: "{{ _metering_openshift_io_meteringconfig.spec }}"
+
+# The default specs for each component
+_openshift_reporting_default_spec: "{{ meteringconfig_default_values['openshift-reporting'].spec }}"
+_presto_default_spec: "{{ meteringconfig_default_values.presto.spec }}"
+_hive_default_spec: "{{ meteringconfig_default_values.hive.spec }}"
+_reporting_op_default_spec: "{{ meteringconfig_default_values['reporting-operator'].spec }}"
+_hadoop_default_spec: "{{ meteringconfig_default_values.hadoop.spec }}"
+_ghostunnel_default: "{{ meteringconfig_default_values.__ghostunnel }}"
+
+meteringconfig_reporting_operator_default_image_override: "{{ lookup('env', 'METERING_REPORTING_OPERATOR_IMAGE') }}"
+meteringconfig_oauth_proxy_default_image_override: "{{ lookup('env', 'OAUTH_PROXY_IMAGE') }}"
+meteringconfig_presto_default_image_override: "{{ lookup('env', 'METERING_PRESTO_IMAGE') }}"
+meteringconfig_hive_default_image_override: "{{ lookup('env', 'METERING_HIVE_IMAGE') }}"
+meteringconfig_hadoop_default_image_override: "{{ lookup('env', 'METERING_HADOOP_IMAGE') }}"
+meteringconfig_ghostunnel_default_image_override: "{{ lookup('env', 'GHOSTUNNEL_IMAGE') }}"
+
+# Allow Presto to query Prometheus
+meteringconfig_create_presto_prometheus_auth: "{{ _presto_spec.config.connectors.prometheus.enabled | default(false) }}"
+
+# Override the default images we use with env vars if set, falling back to the values.yaml configured default if not set.
+meteringconfig_default_image_overrides:
+  reporting-operator:
+    spec:
+      image:
+        defaultOverride: "{{ meteringconfig_reporting_operator_default_image_override }}"
+
+      authProxy:
+        image:
+          defaultOverride: "{{ meteringconfig_oauth_proxy_default_image_override }}"
+
+  presto:
+    spec:
+      image:
+        defaultOverride: "{{ meteringconfig_presto_default_image_override }}"
+  hive:
+    spec:
+      image:
+        defaultOverride: "{{ meteringconfig_hive_default_image_override }}"
+  hadoop:
+    spec:
+      image:
+        defaultOverride: "{{ meteringconfig_hadoop_default_image_override }}"
+  __ghostunnel:
+    image:
+      defaultOverride: "{{ meteringconfig_ghostunnel_default_image_override }}"
+
+_storage_spec: "{{ meteringconfig_default_values | combine(meteringconfig_spec_overrides) | json_query('storage') | default({}, true) }}"
+
+_base_storage_overrides:
+  s3:
+    storage:
+      hive:
+        # s3 storage defaults
+        s3:
+          # Intentionally an invalid default name to ensure that this is overridden, and obvious when it's not.
+          bucket: "-unconfigured-metering-bucket-name-"
+          secretName: ""
+          # create buckets by default
+          createBucket: true
+          region: ""
+    reporting-operator:
+      spec:
+        config:
+          aws:
+            secretName: "{{ _storage_spec | json_query('hive.s3.secretName') }}"
+            createSecret: false
+    presto:
+      spec:
+        config:
+          aws:
+            secretName: "{{ _storage_spec | json_query('hive.s3.secretName') }}"
+            region: "{{ _storage_spec | json_query('hive.s3.region') }}"
+            createSecret: false
+    hive:
+      spec:
+        config:
+          # regex_replace to append a trailing slash if missing
+          metastoreWarehouseDir: "s3a://{{ _storage_spec | json_query('hive.s3.bucket') | regex_replace('\\/?$', '/') }}"
+          aws:
+            secretName: "{{ _storage_spec | json_query('hive.s3.secretName') }}"
+            createSecret: false
+    hadoop:
+      spec:
+        config:
+          # regex_replace to append a trailing slash if missing
+          defaultFS: "s3a://{{ _storage_spec | json_query('hive.s3.bucket') | regex_replace('\\/?$', '/') }}"
+          aws:
+            region: "{{ _storage_spec | json_query('hive.s3.region') }}"
+        hdfs:
+          enabled: false
+
+  azure:
+    storage:
+      hive:
+        # azure storage defaults
+        azure:
+          # Intentionally an invalid default name to ensure that this is overridden, and obvious when it's not.
+          container: "-unconfigured-metering-container-name-"
+          secretName: ""
+          storageAccountName: ""
+          secretAccessKey: ""
+          createSecret: false
+          rootDirectory: ""
+    presto:
+      spec:
+        config:
+          azure:
+            secretName: "{{ _storage_spec | json_query('hive.azure.secretName') }}"
+            createSecret: "{{ _storage_spec | json_query('hive.azure.createSecret') }}"
+            storageAccountName: "{{ _storage_spec | json_query('hive.azure.storageAccountName') }}"
+            secretAccessKey: "{{ _storage_spec | json_query('hive.azure.secretAccessKey') }}"
+    hive:
+      spec:
+        config:
+          metastoreWarehouseDir: "wasbs://{{ _storage_spec | json_query('hive.azure.container') }}@{{ _storage_spec | json_query('hive.azure.storageAccountName') }}.blob.core.windows.net{{ _storage_spec | json_query('hive.azure.rootDirectory') | default('/', True) | regex_replace('^\\/?', '/') }}"
+          azure:
+            secretName: "{{ _storage_spec | json_query('hive.azure.secretName') }}"
+            createSecret: "{{ _storage_spec | json_query('hive.azure.createSecret') }}"
+            storageAccountName: "{{ _storage_spec | json_query('hive.azure.storageAccountName') }}"
+            secretAccessKey: "{{ _storage_spec | json_query('hive.azure.secretAccessKey') }}"
+    hadoop:
+      spec:
+        config:
+          defaultFS: "wasbs://{{ _storage_spec | json_query('hive.azure.container') }}@{{ _storage_spec | json_query('hive.azure.storageAccountName') }}.blob.core.windows.net{{ _storage_spec | json_query('hive.azure.rootDirectory') | default('/', True) | regex_replace('^\\/?', '/') }}"
+          azure:
+            secretName: "{{ _storage_spec | json_query('hive.azure.secretName') }}"
+            createSecret: "{{ _storage_spec | json_query('hive.azure.createSecret') }}"
+            storageAccountName: "{{ _storage_spec | json_query('hive.azure.storageAccountName') }}"
+            secretAccessKey: "{{ _storage_spec | json_query('hive.azure.secretAccessKey') }}"
+        hdfs:
+          enabled: false
+
+  gcs:
+    storage:
+      hive:
+        # gcs storage defaults
+        gcs:
+          # Intentionally an invalid default name to ensure that this is overridden, and obvious when it's not.
+          bucket: "-unconfigured-metering-bucket-name-"
+          secretName: ""
+          createSecret: false
+          serviceAccountKeyJSON: ""
+    presto:
+      spec:
+        config:
+          gcs:
+            secretName: "{{ _storage_spec | json_query('hive.gcs.secretName') }}"
+            createSecret: "{{ _storage_spec | json_query('hive.gcs.createSecret') }}"
+            serviceAccountKeyJSON: "{{ _storage_spec | json_query('hive.gcs.serviceAccountKeyJSON') }}"
+    hive:
+      spec:
+        config:
+          metastoreWarehouseDir: "gs://{{ _storage_spec | json_query('hive.gcs.bucket') | regex_replace('\\/?$', '/') }}"
+          gcs:
+            secretName: "{{ _storage_spec | json_query('hive.gcs.secretName') }}"
+            createSecret: "{{ _storage_spec | json_query('hive.gcs.createSecret') }}"
+            serviceAccountKeyJSON: "{{ _storage_spec | json_query('hive.gcs.serviceAccountKeyJSON') }}"
+    hadoop:
+      spec:
+        config:
+          defaultFS: "gs://{{ _storage_spec | json_query('hive.gcs.bucket') | regex_replace('\\/?$', '/') }}"
+          gcs:
+            secretName: "{{ _storage_spec | json_query('hive.gcs.secretName') }}"
+            createSecret: "{{ _storage_spec | json_query('hive.gcs.createSecret') }}"
+            serviceAccountKeyJSON: "{{ _storage_spec | json_query('hive.gcs.serviceAccountKeyJSON') }}"
+        hdfs:
+          enabled: false
+
+  s3Compatible:
+    storage:
+      hive:
+        # s3 storage defaults
+        s3Compatible:
+          # Intentionally an invalid default name to ensure that this is overridden, and obvious when it's not.
+          bucket: "-unconfigured-metering-bucket-name-"
+          secretName: ""
+          createSecret: false
+          accessKeyID: ""
+          secretAccessKey: ""
+          endpoint: ""
+          ca:
+            createSecret: false
+            secretName: ""
+            content: ""
+
+    presto:
+      spec:
+        config:
+          s3Compatible:
+            secretName: "{{ _storage_spec | json_query('hive.s3Compatible.secretName') }}"
+            createSecret: "{{ _storage_spec | json_query('hive.s3Compatible.createSecret') }}"
+            accessKeyID: "{{ _storage_spec | json_query('hive.s3Compatible.accessKeyID') }}"
+            secretAccessKey: "{{ _storage_spec | json_query('hive.s3Compatible.secretAccessKey') }}"
+            endpoint: "{{ _storage_spec | json_query('hive.s3Compatible.endpoint') }}"
+            ca:
+              createSecret: "{{ _storage_spec | json_query('hive.s3Compatible.ca.createSecret') }}"
+              secretName: "{{ _storage_spec | json_query('hive.s3Compatible.ca.secretName') }}"
+              content: "{{ _storage_spec | json_query('hive.s3Compatible.ca.content') }}"
+
+    hive:
+      spec:
+        config:
+          # regex_replace to append a trailing slash if missing
+          metastoreWarehouseDir: "s3a://{{ _storage_spec | json_query('hive.s3Compatible.bucket') | regex_replace('\\/?$', '/') }}"
+          s3Compatible:
+            secretName: "{{ _storage_spec | json_query('hive.s3Compatible.secretName') }}"
+            createSecret: "{{ _storage_spec | json_query('hive.s3Compatible.createSecret') }}"
+            accessKeyID: "{{ _storage_spec | json_query('hive.s3Compatible.accessKeyID') }}"
+            secretAccessKey: "{{ _storage_spec | json_query('hive.s3Compatible.secretAccessKey') }}"
+            endpoint: "{{ _storage_spec | json_query('hive.s3Compatible.endpoint') }}"
+            ca:
+              createSecret: "{{ _storage_spec | json_query('hive.s3Compatible.ca.createSecret') }}"
+              secretName: "{{ _storage_spec | json_query('hive.s3Compatible.ca.secretName') }}"
+              content: "{{ _storage_spec | json_query('hive.s3Compatible.ca.content') }}"
+
+    hadoop:
+      spec:
+        config:
+          # regex_replace to append a trailing slash if missing
+          defaultFS: "s3a://{{ _storage_spec | json_query('hive.s3Compatible.bucket') | regex_replace('\\/?$', '/') }}"
+          s3Compatible:
+            secretName: "{{ _storage_spec | json_query('hive.s3Compatible.secretName') }}"
+            createSecret: "{{ _storage_spec | json_query('hive.s3Compatible.createSecret') }}"
+            accessKeyID: "{{ _storage_spec | json_query('hive.s3Compatible.accessKeyID') }}"
+            secretAccessKey: "{{ _storage_spec | json_query('hive.s3Compatible.secretAccessKey') }}"
+            endpoint: "{{ _storage_spec | json_query('hive.s3Compatible.endpoint') }}"
+            ca:
+              createSecret: "{{ _storage_spec | json_query('hive.s3Compatible.ca.createSecret') }}"
+              secretName: "{{ _storage_spec | json_query('hive.s3Compatible.ca.secretName') }}"
+              content: "{{ _storage_spec | json_query('hive.s3Compatible.ca.content') }}"
+
+        hdfs:
+          enabled: false
+
+  hdfs:
+    hadoop:
+      spec:
+        config:
+          defaultFS: "hdfs://{{ _storage_spec | json_query('hive.hdfs.namenode') | default('hdfs-namenode-0.hdfs-namenode:9820', true) }}"
+        hdfs:
+          enabled: "{{ meteringconfig_spec_overrides | json_query('unsupportedFeatures.enableHDFS') | default(false, true) }}"
+
+  sharedPVC:
+    hive:
+      spec:
+        config:
+          metastoreWarehouseDir: "{{ _storage_spec | json_query('hive.sharedPVC.mountPath') | default('/user/hive/warehouse', true) }}"
+          sharedVolume:
+            enabled: true
+            createPVC: "{{ _storage_spec | json_query('hive.sharedPVC.createPVC') | default(false, true) }}"
+            mountPath: "{{ _storage_spec | json_query('hive.sharedPVC.mountPath') | default('/user/hive/warehouse', true) }}"
+            claimName: "{{ _storage_spec | json_query('hive.sharedPVC.claimName') | default(_hive_default_spec.config.sharedVolume.claimName, true) }}"
+            size: "{{ _storage_spec | json_query('hive.sharedPVC.size') | default(_hive_default_spec.config.sharedVolume.size, true) }}"
+            storageClass: "{{ _storage_spec | json_query('hive.sharedPVC.storageClass') | default(_hive_default_spec.config.sharedVolume.storageClass, true) }}"
+
+    hadoop:
+      spec:
+        config:
+          defaultFS: "file://{{ _storage_spec | json_query('hive.sharedPVC.mountPath') | default('/user/hive/warehouse', true) }}"
+        hdfs:
+          enabled: false
+
+# overides the accountname(potentially empty) from a designated secret and generate the storage URL
+meteringconfig_storage_azure_create_secret: "{{ _storage_spec | json_query('hive.azure.createSecret') | default(false, true) }}"
+
+_azure_secret_account_name: ""
+#
+# Use _azure_account_overides when meteringconfig_storage_azure_create_secret is false to correctly set the defaultFS and metastoreWarehouseDir with the storage account name from the user's secret.
+#
+_azure_account_overides:
+  azure:
+    hadoop:
+      spec:
+        config:
+          defaultFS: "wasbs://{{ _storage_spec | json_query('hive.azure.container') }}@{{ _azure_secret_account_name  }}.blob.core.windows.net{{ _storage_spec | json_query('hive.azure.rootDirectory')| default('/', True) | regex_replace('^\\/?', '/') }}"
+    hive:
+      spec:
+        config:
+          metastoreWarehouseDir: "wasbs://{{ _storage_spec | json_query('hive.azure.container') }}@{{ _azure_secret_account_name }}.blob.core.windows.net{{ _storage_spec | json_query('hive.azure.rootDirectory')| default('/', True) | regex_replace('^\\/?', '/') }}"
+
+_meteringconfig_azure_overrides: "{{ meteringconfig_storage_azure_create_secret | ternary({} , _azure_account_overides ) | default({}, true) }}"
+_storage_overrides: "{{ _base_storage_overrides | combine(_meteringconfig_azure_overrides, recursive = True) }}"
+meteringconfig_storage_azure_container_name: "{{ _storage_spec | json_query('hive.azure.container') }}"
+meteringconfig_storage_azure_storage_account_name: "{{ _storage_spec | json_query('hive.azure.storageAccountName') }}"
+meteringconfig_storage_azure_credentials_secret_name: "{{ _storage_spec | json_query('hive.azure.secretName') }}"
+meteringconfig_storage_hive_storage_type: "{{ _storage_spec | json_query('hive.type') }}"
+meteringconfig_storage_overrides: "{{ _storage_overrides[meteringconfig_storage_hive_storage_type] | default({}, true) }}"
+
+# variables for validating GCS
+meteringconfig_storage_gcs_bucket_name: "{{ _storage_spec | json_query('hive.gcs.bucket') }}"
+meteringconfig_storage_gcs_create_secret: "{{ _storage_spec | json_query('hive.gcs.createSecret') | default(false, true) }}"
+meteringconfig_storage_gcs_credentials_secret_name: "{{ _storage_spec | json_query('hive.gcs.secretName') }}"
+
+# variables for validating S3 Compatible Storage
+meteringconfig_storage_s3Compatible_bucket_name: "{{ _storage_spec | json_query('hive.s3Compatible.bucket') }}"
+meteringconfig_storage_s3Compatible_create_secret: "{{ _storage_spec | json_query('hive.s3Compatible.createSecret') | default(false, true) }}"
+meteringconfig_storage_s3Compatible_credentials_secret_name: "{{ _storage_spec | json_query('hive.s3Compatible.secretName') }}"
+meteringconfig_storage_s3Compatible_endpoint: "{{ _storage_spec | json_query('hive.s3Compatible.endpoint') }}"
+
+#
+# Override the default values to handle Openshift, and non-Openshift configurations
+#
+meteringconfig_ocp_disabled: "{{ lookup('env', 'DISABLE_OCP_FEATURES') | bool or meteringconfig_default_values | combine(meteringconfig_spec_overrides, recursive=True) | json_query('disableOCPFeatures') }}"
+_meteringconfig_ocp_disabled_overrides: "{{ meteringconfig_ocp_disabled | ternary(_ocp_disabled_overrides, _ocp_enabled_overrides) }}"
+
+_ocp_disabled_overrides:
+  tls:
+    enabled: false
+
+  monitoring:
+    enabled: false
+
+  openshift-reporting:
+    spec:
+      defaultReportDataSources:
+        postKube_1_14:
+          enabled: false
+
+  reporting-operator:
+    spec:
+      route:
+        enabled: false
+
+      config:
+        prometheus:
+          certificateAuthority:
+            useServiceAccountCA: false
+
+          metricsImporter:
+            auth:
+              useServiceAccountToken: true
+              tokenSecret:
+                enabled: false
+
+        tls:
+          api:
+            enabled: false
+
+  presto:
+    spec:
+      securityContext:
+        fsGroup: 0
+
+  hive:
+    spec:
+      securityContext:
+        fsGroup: 0
+
+  hadoop:
+    spec:
+      hdfs:
+        securityContext:
+          fsGroup: 0
+
+_ocp_enabled_overrides:
+  useIPV6Networking: "{{ _ocp_enabled_use_ipv6_networking }}"
+  networking:
+    useGlobalProxyNetworking: "{{ _ocp_enabled_global_proxy_enabled }}"
+    proxy:
+      config:
+        http_proxy:
+          url: "{{ _ocp_enabled_http_proxy_url | default('') }}"
+          hostname: "{{ _ocp_enabled_http_proxy_hostname | default ('') }}"
+          port: "{{ _ocp_enabled_http_proxy_port | default ('') }}"
+          username: "{{ _ocp_enabled_http_proxy_username | default ('') }}"
+          password: "{{ _ocp_enabled_http_proxy_password | default ('') }}"
+        https_proxy:
+          url: "{{ _ocp_enabled_https_proxy_url | default('') }}"
+          hostname: "{{ _ocp_enabled_https_proxy_hostname | default ('') }}"
+          port: "{{ _ocp_enabled_https_proxy_port | default ('') }}"
+          username: "{{ _ocp_enabled_https_proxy_username | default ('') }}"
+          password: "{{ _ocp_enabled_https_proxy_password | default ('') }}"
+        no_proxy:  "{{ _ocp_enabled_global_proxy_no_proxy }}"
+        trusted_ca_bundle: "{{ _ocp_enabled_global_proxy_trusted_ca_bundle }}"
+
+  reporting-operator:
+    spec:
+      config:
+        prometheus:
+          url: "https://thanos-querier.openshift-monitoring.svc:9091/"
+
+  presto:
+    spec:
+      config:
+        connectors:
+          prometheus:
+            # Re-enable by default for OCP installs once we resolved
+            # https://bugzilla.redhat.com/show_bug.cgi?id=1829446
+            enabled: false
+            config:
+              # TODO: uncomment once the above BZ is resolved
+              # uri: "https://thanos-querier.openshift-monitoring.svc:9091/"
+              uri: ""
+            auth:
+              bearerTokenFile: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
+#
+# Hive Metastore Database Configuration
+#
+_hive_metastore_db_overrides:
+  hive:
+    spec:
+      config:
+        db:
+          username: "{{ _hive_metastore_db_username | default('') }}"
+          password: "{{ _hive_metastore_db_password | default('') }}"
+      metastore:
+        storage:
+          create: "{{ _hive_metastore_create_default_storage | default(true) }}"
+
+#
+# Networking Configuration
+#
+_ocp_enabled_use_ipv6_networking: false
+_ocp_enabled_global_proxy_enabled: false
+_ocp_enabled_global_proxy_trusted_ca_bundle: ""
+_ocp_enabled_global_proxy_no_proxy: ""
+
+_meteringconfig_create_user_trusted_ca_bundle: "{{ _ocp_enabled_global_proxy_trusted_ca_bundle | length > 0 }}"
+
+#
+# Override the default values with _tls_overrides when spec.tls.enabled is set to true, else use values.yaml and meteringconfig_spec_overrides
+#
+_meteringconfig_reporting_operator_presto_server_ca_certificate: ""
+_meteringconfig_reporting_operator_presto_server_secret_name: "reporting-operator-presto-server-tls"
+
+_meteringconfig_reporting_operator_presto_client_secret_name: "reporting-operator-presto-client-tls"
+_meteringconfig_reporting_operator_presto_client_cert: ""
+_meteringconfig_reporting_operator_presto_client_key: ""
+
+_meteringconfig_reporting_operator_hive_client_secret_name: "reporting-operator-hive-client-tls"
+_meteringconfig_reporting_operator_hive_client_certificate: ""
+_meteringconfig_reporting_operator_hive_client_key: ""
+
+_meteringconfig_reporting_operator_hive_server_ca_certificate: ""
+_meteringconfig_reporting_operator_hive_server_secret_name: "reporting-operator-hive-server-tls"
+
+_meteringconfig_reporting_operator_auth_proxy_cookie_seed: ""
+
+_meteringconfig_presto_server_secret_name: "presto-server-tls"
+_meteringconfig_presto_server_ca_certificate: ""
+_meteringconfig_presto_server_certificate: ""
+_meteringconfig_presto_server_key: ""
+
+_meteringconfig_presto_client_secret_name: "presto-client-tls"
+_meteringconfig_presto_client_ca_certificate: ""
+_meteringconfig_presto_client_certificate: ""
+_meteringconfig_presto_client_key: ""
+
+_meteringconfig_presto_hive_client_secret_name: "presto-hive-metastore-client-tls"
+_meteringconfig_presto_hive_client_ca_certificate: ""
+_meteringconfig_presto_hive_client_certificate: ""
+_meteringconfig_presto_hive_client_key: ""
+
+_meteringconfig_hive_metastore_server_secret_name: "hive-metastore-server-tls"
+_meteringconfig_hive_metastore_server_certificate: ""
+_meteringconfig_hive_metastore_server_key: ""
+_meteringconfig_hive_metastore_server_ca_certificate: ""
+
+_meteringconfig_hive_server_secret_name: "hive-server-tls"
+_meteringconfig_hive_server_certificate: ""
+_meteringconfig_hive_server_key: ""
+_meteringconfig_hive_server_ca_certificate: ""
+
+_meteringconfig_hive_server_client_secret_name: "hive-server-auth-tls"
+_meteringconfig_hive_server_client_certificate: ""
+_meteringconfig_hive_server_client_key: ""
+_meteringconfig_hive_server_client_ca_certificate: ""
+
+_meteringconfig_tls_root_ca_certificate: ""
+_meteringconfig_tls_root_ca_key: ""
+
+_meteringconfig_root_ca_overrides:
+  tls:
+    certificate: "{{ _meteringconfig_tls_root_ca_certificate }}"
+    key: "{{ _meteringconfig_tls_root_ca_key }}"
+
+_tls_overrides:
+  reporting-operator:
+    spec:
+      config:
+        presto:
+          tls:
+            caCertificate: "{{ _meteringconfig_reporting_operator_presto_server_ca_certificate }}"
+
+            enabled: true
+            createSecret: true
+            secretName: "{{ _meteringconfig_reporting_operator_presto_server_secret_name }}"
+
+          auth:
+            certificate: "{{ _meteringconfig_reporting_operator_presto_client_cert }}"
+            key: "{{ _meteringconfig_reporting_operator_presto_client_key }}"
+
+            enabled: true
+            createSecret: true
+            secretName: "{{ _meteringconfig_reporting_operator_presto_client_secret_name }}"
+
+        hive:
+          tls:
+            caCertificate: "{{ _meteringconfig_reporting_operator_hive_server_ca_certificate }}"
+
+            enabled: true
+            createSecret: true
+            secretName: "{{ _meteringconfig_reporting_operator_hive_server_secret_name }}"
+
+          auth:
+            certificate: "{{ _meteringconfig_reporting_operator_hive_client_certificate }}"
+            key: "{{ _meteringconfig_reporting_operator_hive_client_key }}"
+
+            enabled: true
+            createSecret: true
+            secretName: "{{ _meteringconfig_reporting_operator_hive_client_secret_name }}"
+
+      authProxy:
+        enabled: true
+
+        cookie:
+          seed: "{{ _meteringconfig_reporting_operator_auth_proxy_cookie_seed }}"
+
+        deletegateURLs:
+          enabled: true
+
+        subjectAccessReview:
+          enabled: true
+
+  presto:
+    spec:
+      config:
+        tls:
+          certificate: "{{  _meteringconfig_presto_server_certificate }}"
+          key: "{{ _meteringconfig_presto_server_key }}"
+          caCertificate: "{{ _meteringconfig_presto_server_ca_certificate }}"
+
+          enabled: true
+          createSecret: true
+          secretName: "{{ _meteringconfig_presto_server_secret_name }}"
+        auth:
+          certificate: "{{  _meteringconfig_presto_client_certificate }}"
+          key: "{{ _meteringconfig_presto_client_key }}"
+          caCertificate: "{{ _meteringconfig_presto_client_ca_certificate }}"
+
+          enabled: true
+          createSecret: true
+          secretName: "{{ _meteringconfig_presto_client_secret_name }}"
+
+        connectors:
+          hive:
+            tls:
+              certificate: "{{  _meteringconfig_presto_hive_client_certificate }}"
+              key: "{{ _meteringconfig_presto_hive_client_key }}"
+              caCertificate: "{{ _meteringconfig_presto_hive_client_ca_certificate }}"
+
+              enabled: true
+              createSecret: true
+              secretName: "{{ _meteringconfig_presto_hive_client_secret_name }}"
+
+  hive:
+    spec:
+      metastore:
+        config:
+          tls:
+            certificate: "{{ _meteringconfig_hive_metastore_server_certificate }}"
+            key: "{{ _meteringconfig_hive_metastore_server_key }}"
+            caCertificate: "{{ _meteringconfig_hive_metastore_server_ca_certificate }}"
+
+            enabled: true
+            createSecret: true
+            secretName: "{{ _meteringconfig_hive_metastore_server_secret_name }}"
+
+          auth:
+            enabled: true
+
+      server:
+        config:
+          tls:
+            certificate: "{{ _meteringconfig_hive_server_certificate }}"
+            key: "{{ _meteringconfig_hive_server_key }}"
+            caCertificate: "{{ _meteringconfig_hive_server_ca_certificate }}"
+
+            enabled: true
+            createSecret: true
+            secretName: "{{ _meteringconfig_hive_server_secret_name }}"
+
+          auth:
+            enabled: true
+
+          metastoreTLS:
+            certificate: "{{ _meteringconfig_hive_server_client_certificate }}"
+            key: "{{ _meteringconfig_hive_server_client_key }}"
+            caCertificate: "{{ _meteringconfig_hive_server_client_ca_certificate }}"
+
+            enabled: true
+            createSecret: true
+            secretName: "{{ _meteringconfig_hive_server_client_secret_name }}"
+
+
+# check if the user's spec contains the top-level tls.enabled field. if true, use the value stored in that field, else default to the value stored in values.yaml
+meteringconfig_tls_enabled: "{{ meteringconfig_default_values | combine(_meteringconfig_ocp_disabled_overrides, meteringconfig_spec_overrides, recursive=True) | json_query('tls.enabled') }}"
+_meteringconfig_tls_overrides: "{{ meteringconfig_tls_enabled | ternary(_tls_overrides, {}) }}"
+
+# openshift-reporting overrides
+meteringconfig_reporting_enable_post_kube_1_14_datasources: "{{ _openshift_reporting_default_spec.defaultReportDataSources.postKube_1_14.enabled }}"
+
+meteringconfig_reporting_overrides:
+  openshift-reporting:
+    spec:
+      defaultReportDataSources:
+        postKube_1_14:
+          enabled: "{{ meteringconfig_reporting_enable_post_kube_1_14_datasources }}"
+
+# combine the _meteringconfig_tls_overrides dictionary last to enforce when spec.tls.enabled is specified and set to true
+meteringconfig_spec: "{{ meteringconfig_default_values | combine(meteringconfig_default_image_overrides, meteringconfig_storage_overrides, _hive_metastore_db_overrides, meteringconfig_reporting_overrides, _meteringconfig_root_ca_overrides, _meteringconfig_tls_overrides, _meteringconfig_ocp_disabled_overrides, meteringconfig_spec_overrides, recursive=True) }}"
+
+meteringconfig_storage_s3_create_bucket: "{{ meteringconfig_spec | json_query('storage.hive.s3.createBucket') }}"
+meteringconfig_storage_s3_bucket_name: "{{ (meteringconfig_spec | json_query('storage.hive.s3.bucket') | default('', true)).split('/')[0] }}"
+meteringconfig_storage_s3_bucket_region: "{{ meteringconfig_spec | json_query('storage.hive.s3.region') }}"
+meteringconfig_storage_s3_aws_credentials_secret_name: "{{ meteringconfig_spec | json_query('storage.hive.s3.secretName') }}"
+
+########################
+# All Variables below are setup to consume the result of merging the defaults, internal overrides, and user overrides.
+########################
+
+# Private variables to reduce boilerplate
+_monitoring_conf: "{{ meteringconfig_spec.monitoring }}"
+_openshift_reporting_spec: "{{ meteringconfig_spec['openshift-reporting'].spec }}"
+_presto_spec: "{{ meteringconfig_spec.presto.spec }}"
+_hive_spec: "{{ meteringconfig_spec.hive.spec }}"
+_reporting_op_spec: "{{ meteringconfig_spec['reporting-operator'].spec }}"
+_hadoop_spec: "{{ meteringconfig_spec.hadoop.spec }}"
+
+
+meteringconfig_log_helm_template: "{{ meteringconfig_spec.logHelmTemplate | default(false) }}"
+
+meteringconfig_create_metering_default_storage: "{{ _openshift_reporting_spec.defaultStorageLocation.enabled }}"
+
+meteringconfig_create_metering_monitoring_resources: "{{ _monitoring_conf.enabled | default(true) }}"
+meteringconfig_create_metering_monitoring_rbac: "{{ _monitoring_conf.enabled and _monitoring_conf.enabled and _monitoring_conf.createRBAC | default(true) }}"
+meteringconfig_create_metering_root_ca_secret: "{{ meteringconfig_spec.tls.enabled }}"
+
+meteringconfig_enable_reporting_aws_billing: "{{ _openshift_reporting_spec.awsBillingReportDataSource.enabled | default(false) }}"
+
+meteringconfig_enable_hdfs: "{{ _hadoop_spec.hdfs.enabled | default(true) }}"
+meteringconfig_create_hadoop_aws_credentials: "{{ _hadoop_spec.config.aws.createSecret | default(false) }}"
+meteringconfig_create_hadoop_azure_credentials: "{{ _hadoop_spec.config.azure.createSecret | default(false) }}"
+meteringconfig_create_hadoop_gcs_credentials: "{{ _hadoop_spec.config.gcs.createSecret | default(false) }}"
+meteringconfig_create_hadoop_s3_compatible_credentials: "{{ _hadoop_spec.config.s3Compatible.createSecret | default(false) }}"
+meteringconfig_create_hadoop_s3_compatible_ca: "{{ _hadoop_spec.config.s3Compatible.ca.createSecret | default(false) }}"
+
+meteringconfig_create_hive_metastore_pvc: "{{ _hive_spec.metastore.storage.create | default(true) }}"
+meteringconfig_create_hive_shared_volume_pvc: "{{ _hive_spec.config.sharedVolume.enabled and _hive_spec.config.sharedVolume.createPVC | default(false) }}"
+meteringconfig_create_hive_aws_credentials: "{{ _hive_spec.config.aws.createSecret | default(false) }}"
+meteringconfig_create_hive_azure_credentials: "{{ _hive_spec.config.azure.createSecret | default(false) }}"
+meteringconfig_create_hive_gcs_credentials: "{{ _hive_spec.config.gcs.createSecret | default(false) }}"
+meteringconfig_create_hive_s3_compatible_credentials: "{{ _hive_spec.config.s3Compatible.createSecret | default(false) }}"
+meteringconfig_create_hive_s3_compatible_ca: "{{ _hive_spec.config.s3Compatible.ca.createSecret | default(false) }}"
+
+meteringconfig_create_hive_metastore_tls_secrets: "{{ _hive_spec.metastore.config.tls.enabled and _hive_spec.metastore.config.tls.createSecret | default(false) }}"
+meteringconfig_create_hive_server_metastore_tls_secrets: "{{ _hive_spec.server.config.metastoreTLS.enabled and _hive_spec.server.config.metastoreTLS.createSecret | default(false) }}"
+meteringconfig_create_hive_server_tls_secrets: "{{ _hive_spec.server.config.tls.enabled and _hive_spec.server.config.tls.createSecret | default(false) }}"
+
+meteringconfig_create_presto_aws_credentials: "{{ _presto_spec.config.aws.createSecret | default(false) }}"
+meteringconfig_create_presto_azure_credentials: "{{ _presto_spec.config.azure.createSecret | default(false) }}"
+meteringconfig_create_presto_hive_metastore_tls_secrets: "{{ _presto_spec.config.connectors.hive.tls.enabled and _presto_spec.config.connectors.hive.tls.createSecret | default(false) }}"
+meteringconfig_create_presto_gcs_credentials: "{{ _presto_spec.config.gcs.createSecret | default(false) }}"
+meteringconfig_create_presto_s3_compatible_credentials: "{{ _presto_spec.config.s3Compatible.createSecret | default(false) }}"
+meteringconfig_create_presto_s3_compatible_ca: "{{ _presto_spec.config.s3Compatible.ca.createSecret | default(false) }}"
+
+
+meteringconfig_template_hive_metastore_tls_secret: "{{ _hive_spec.metastore.config.tls.enabled and _hive_spec.metastore.config.tls.createSecret and _hive_spec.metastore.config.tls.secretName != 'hive-metastore-server-tls'}}"
+meteringconfig_template_hive_server_tls_secret: "{{ _hive_spec.server.config.tls.enabled and _hive_spec.server.config.tls.createSecret and _hive_spec.server.config.tls.secretName != 'hive-server-tls'}}"
+meteringconfig_template_hive_server_auth_secret: "{{ _hive_spec.server.config.metastoreTLS.enabled and _hive_spec.server.config.metastoreTLS.createSecret and _hive_spec.server.config.metastoreTLS.secretName != 'hive-server-auth-tls' }}"
+meteringconfig_template_hive_secrets: "{{ meteringconfig_template_hive_metastore_tls_secret or meteringconfig_template_hive_server_tls_secret or meteringconfig_template_hive_server_auth_secret }}"
+
+#
+# Enabling Presto TLS/Auth by Default
+#
+meteringconfig_template_presto_tls_secret: "{{ _presto_spec.config.tls.enabled and _presto_spec.config.tls.createSecret and _presto_spec.config.tls.secretName != 'presto-server-tls' }}"
+meteringconfig_template_presto_auth_secret: "{{ _presto_spec.config.auth.enabled and _presto_spec.config.auth.createSecret and _presto_spec.config.auth.secretName != 'presto-client-tls' }}"
+meteringconfig_template_presto_hive_tls_secret: "{{ _presto_spec.config.connectors.hive.tls.enabled and _presto_spec.config.connectors.hive.tls.createSecret and _presto_spec.config.connectors.hive.tls.secretName != 'presto-hive-metastore-client-tls' }}"
+meteringconfig_create_presto_tls_secrets: "{{ _presto_spec.config.tls.enabled and _presto_spec.config.tls.createSecret | default(false) }}"
+meteringconfig_create_presto_auth_secrets: "{{ _presto_spec.config.auth.enabled and _presto_spec.config.auth.createSecret | default(false) }}"
+
+#
+# Reporting Operator
+#
+meteringconfig_create_reporting_operator_auth_proxy_cookie_secret: "{{ _reporting_op_spec.authProxy.enabled and _reporting_op_spec.authProxy.cookie.createSecret | default(true) }}"
+meteringconfig_create_reporting_operator_auth_proxy_htpasswd_secret: "{{ _reporting_op_spec.authProxy.enabled and _reporting_op_spec.authProxy.htpasswd.createSecret | default(true) }}"
+meteringconfig_create_reporting_operator_auth_proxy_authenticated_emails_secret: "{{ _reporting_op_spec.authProxy.enabled and _reporting_op_spec.authProxy.authenticatedEmails.createSecret | default(true) }}"
+meteringconfig_create_reporting_operator_auth_proxy_rbac: "{{ _reporting_op_spec.authProxy.enabled and _reporting_op_spec.authProxy.rbac.createAuthProxyClusterRole and (_reporting_op_spec.authProxy.subjectAccessReview.enabled and _reporting_op_spec.authProxy.delegateURLs.enabled) | default(false) }}"
+meteringconfig_create_reporting_operator_prometheus_bearer_token: "{{ _reporting_op_spec.config.prometheus.metricsImporter.auth.tokenSecret.create | default(false) }}"
+meteringconfig_create_reporting_operator_prometheus_certificate_authority: "{{ _reporting_op_spec.config.prometheus.certificateAuthority.configMap.create | default(false) }}"
+meteringconfig_create_reporting_operator_aws_credentials: "{{ _reporting_op_spec.config.aws.createSecret | default(false) }}"
+meteringconfig_create_reporting_operator_presto_tls_secrets: "{{ _reporting_op_spec.config.presto.tls.enabled and _reporting_op_spec.config.presto.tls.createSecret | default(false) }}"
+meteringconfig_create_reporting_operator_presto_auth_secrets: "{{ _reporting_op_spec.config.presto.auth.enabled and _reporting_op_spec.config.presto.auth.createSecret | default(false) }}"
+meteringconfig_create_reporting_operator_hive_tls_secrets: "{{ _reporting_op_spec.config.hive.tls.enabled and _reporting_op_spec.config.hive.tls.createSecret | default(false) }}"
+meteringconfig_create_reporting_operator_hive_auth_secrets: "{{ _reporting_op_spec.config.hive.auth.enabled and _reporting_op_spec.config.hive.auth.createSecret | default(false) }}"
+meteringconfig_create_reporting_operator_tls_secrets: "{{ _reporting_op_spec.config.tls.api.createSecret | default(false) }}"
+meteringconfig_create_reporting_operator_route: "{{ _reporting_op_spec.route.enabled | default(false) }}"
+meteringconfig_create_reporting_operator_cluster_monitoring_view_rbac: "{{ _reporting_op_spec.rbac.createClusterMonitoringViewRBAC | default(true) }}"

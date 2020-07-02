@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: "{{ meteringconfig_spec.hadoop.spec.configSecretName }}"
+data:
+{% if meteringconfig_spec.hadoop.spec.hdfs.enabled %}
+  hdfs-site.xml: {{ include "hdfs-site-xml" . | b64encode }}
+{% endif %}
+  core-site.xml: {{ include "core-site-xml" . | b64encode }}

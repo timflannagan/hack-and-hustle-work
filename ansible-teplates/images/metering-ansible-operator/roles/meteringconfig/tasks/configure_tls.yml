@@ -1,0 +1,71 @@
+---
+
+- name: Configure TLS
+  block:
+  - include_tasks: update_meteringconfig_status.yml
+    vars:
+      current_conditions:
+        type: "Running"
+        status: "True"
+        message: "Configuring TLS"
+        lastTransitionTime: "{{ now(utc=False).isoformat() + 'Z' }}"
+
+  - name: Log event for configuring the TLS-related tasks
+    k8s_event:
+      state: present
+      name: metering-operator-configuring-tls
+      namespace: "{{ meta.namespace }}"
+      message: Configuring TLS for the metering-ansible-operator
+      reason: Started
+      type: Normal
+      source:
+        component: metering-ansible-operator
+      involvedObject:
+        apiVersion: metering.openshift.io
+        kind: MeteringConfig
+        name: "{{ meta.name }}"
+        namespace: "{{ meta.namespace }}"
+
+  - name: Create temporary directory to store all the necessary certificates/keys
+    tempfile:
+      suffix: certificates
+      state: directory
+    register: certificates_dir
+
+  - name: Generate the metering root certificate authority
+    include_tasks: configure_root_ca.yml
+
+  - name: Configure TLS and client-side authentication in Presto
+    include_tasks: configure_presto_tls.yml
+
+  - name: Configure TLS and authentication in Hive
+    include_tasks: configure_hive_tls.yml
+
+  - name: Configure TLS and authentication in the reporting-operator
+    include_tasks: configure_reporting_operator_tls.yml
+  rescue:
+  - include_tasks: update_meteringconfig_status.yml
+    vars:
+      current_conditions:
+        type: "Invalid"
+        status: "True"
+        message: |
+          "{{ ansible_failed_result.msg }}"
+        lastTransitionTime: "{{ now(utc=False).isoformat() + 'Z' }}"
+      end_play_after_updating_status: true
+    when:
+    - ansible_failed_result is defined
+    - ansible_failed_result.msg | length > 0
+  always:
+  - name: Cleanup the temporary directory which held the certificates and keys
+    file:
+      path: "{{ certificates_dir.path }}"
+      state: absent
+
+- include_tasks: update_meteringconfig_status.yml
+  vars:
+    current_conditions:
+      type: "Running"
+      status: "True"
+      message: "Finished configuring TLS"
+      lastTransitionTime: "{{ now(utc=False).isoformat() + 'Z' }}"

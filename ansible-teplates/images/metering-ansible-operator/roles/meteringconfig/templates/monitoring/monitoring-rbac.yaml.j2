@@ -1,0 +1,34 @@
+{% if meteringconfig_spec.monitoring.enabled and meteringconfig_spec.monitoring.createRBAC %}
+# Grant Prometheus permissions to discover our services, endpoints, and pods so
+# it can figure out what needs to be monitored.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: metering-prometheus-k8s
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - services
+  - endpoints
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: metering-prometheus-k8s
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: metering-prometheus-k8s
+subjects:
+- kind: ServiceAccount
+  name: prometheus-k8s
+  namespace: {{ meteringconfig_spec.monitoring.namespace }}
+{% endif %}

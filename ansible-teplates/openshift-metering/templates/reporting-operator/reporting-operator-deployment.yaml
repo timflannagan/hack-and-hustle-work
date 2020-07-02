@@ -1,0 +1,541 @@
+{{- $operatorValues :=  index .Values "reporting-operator" -}}
+{{/* When using TLS but set probes to use https */}}
+{{- if $operatorValues.spec.config.tls.api.enabled -}}
+{{- $_ := set $operatorValues.spec.readinessProbe.httpGet "scheme" "HTTPS" -}}
+{{- $_ := set $operatorValues.spec.livenessProbe.httpGet "scheme" "HTTPS" -}}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reporting-operator
+  labels:
+    app: reporting-operator
+spec:
+  replicas: {{ $operatorValues.spec.replicas }}
+  strategy:
+{{ toYaml $operatorValues.spec.updateStrategy | indent 4 }}
+  selector:
+    matchLabels:
+      app: reporting-operator
+{{- if $operatorValues.spec.labels }}
+{{ toYaml $operatorValues.spec.labels | indent 6 }}
+{{- end }}
+  template:
+    metadata:
+      labels:
+        app: reporting-operator
+{{- if $operatorValues.spec.labels }}
+{{ toYaml $operatorValues.spec.labels | indent 8 }}
+{{- end }}
+      annotations:
+        reporting-operator-config-hash: {{ include (print $.Template.BasePath "/reporting-operator/reporting-operator-config.yaml") . | sha256sum }}
+{{- if $operatorValues.spec.config.aws.createSecret }}
+        reporting-operator-aws-credentials-secrets-hash: {{ include (print $.Template.BasePath "/reporting-operator/reporting-operator-aws-credentials-secrets.yaml") . | sha256sum }}
+{{- end }}
+{{- if and $operatorValues.spec.config.tls.api.enabled $operatorValues.spec.config.tls.api.createSecret }}
+        reporting-operator-tls-secrets-hash: {{ include (print $.Template.BasePath "/reporting-operator/reporting-operator-tls-secrets.yaml") . | sha256sum }}
+{{- end }}
+{{- if and $operatorValues.spec.config.presto.tls.enabled $operatorValues.spec.config.presto.tls.createSecret }}
+        reporting-operator-presto-server-tls-hash: {{ include (print $.Template.BasePath "/reporting-operator/reporting-operator-presto-tls-secrets.yaml") . | sha256sum }}
+{{- end }}
+{{- if and $operatorValues.spec.config.hive.tls.enabled $operatorValues.spec.config.hive.tls.createSecret }}
+        reporting-operator-hive-server-tls-hash: {{ include (print $.Template.BasePath "/reporting-operator/reporting-operator-hive-tls-secrets.yaml") . | sha256sum }}
+{{- end }}
+{{- if and $operatorValues.spec.config.presto.auth.enabled $operatorValues.spec.config.presto.auth.createSecret }}
+        reporting-operator-presto-client-tls-hash: {{ include (print $.Template.BasePath "/reporting-operator/reporting-operator-presto-auth-secrets.yaml") . | sha256sum }}
+{{- end }}
+{{- if and $operatorValues.spec.config.hive.auth.enabled $operatorValues.spec.config.hive.auth.createSecret }}
+        reporting-operator-hive-client-tls-hash: {{ include (print $.Template.BasePath "/reporting-operator/reporting-operator-hive-auth-secrets.yaml") . | sha256sum }}
+{{- end }}
+{{- if and $operatorValues.spec.authProxy.enabled $operatorValues.spec.authProxy.cookie.createSecret }}
+        reporting-operator-auth-proxy-cookie-secrets-hash: {{ include (print $.Template.BasePath "/reporting-operator/reporting-operator-auth-proxy-cookie-secret.yaml") . | sha256sum }}
+{{- end }}
+{{- if and $operatorValues.spec.authProxy.enabled $operatorValues.spec.authProxy.htpasswd.createSecret }}
+        reporting-operator-auth-proxy-htpasswd-secrets-hash: {{ include (print $.Template.BasePath "/reporting-operator/reporting-operator-auth-proxy-htpasswd-secret.yaml") . | sha256sum }}
+{{- end }}
+{{- if and $operatorValues.spec.authProxy.enabled $operatorValues.spec.authProxy.authenticatedEmails.createSecret }}
+        reporting-operator-auth-proxy-authenticated-emails-secrets-hash: {{ include (print $.Template.BasePath "/reporting-operator/reporting-operator-auth-proxy-authenticated-emails-secret.yaml") . | sha256sum }}
+{{- end }}
+{{- if $operatorValues.spec.annotations }}
+{{ toYaml $operatorValues.spec.annotations | indent 8 }}
+{{- end }}
+    spec:
+      securityContext:
+{{ toYaml $operatorValues.spec.securityContext | indent 8 }}
+{{- if $operatorValues.spec.nodeSelector }}
+      nodeSelector:
+{{ toYaml $operatorValues.spec.nodeSelector | indent 8 }}
+{{- end }}
+{{- if $operatorValues.spec.tolerations }}
+      tolerations:
+{{ toYaml $operatorValues.spec.tolerations | indent 8 }}
+{{- end }}
+{{- if $operatorValues.spec.affinity }}
+      affinity:
+{{ toYaml $operatorValues.spec.affinity | indent 8 }}
+{{- end }}
+      containers:
+      - name: reporting-operator
+        image: "{{ include "reporting-operator-image" . }}"
+        imagePullPolicy: {{ $operatorValues.spec.image.pullPolicy }}
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+{{- if or $operatorValues.spec.config.aws.createSecret $operatorValues.spec.config.aws.secretName }}
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ $operatorValues.spec.config.aws.secretName | default "reporting-operator-aws-credentials" }}
+              key: aws-access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ $operatorValues.spec.config.aws.secretName | default "reporting-operator-aws-credentials" }}
+              key: aws-secret-access-key
+{{- end }}
+{{- if and .Values.networking.useGlobalProxyNetworking }}
+        - name: HTTP_PROXY
+          value: "{{ .Values.networking.proxy.config.http_proxy.url }}"
+        - name: HTTPS_PROXY
+          value: "{{ .Values.networking.proxy.config.https_proxy.url }}"
+        - name: NO_PROXY
+          value: "{{ .Values.networking.proxy.config.no_proxy }}"
+{{- end }}
+{{- if and .Values.networking.useGlobalProxyNetworking .Values.networking.proxy.config.trusted_ca_bundle }}
+        - name: REPORTING_OPERATOR_PROXY_TRUSTED_CA_BUNDLE
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: proxy-trusted-ca-bundle
+{{- end }}
+        - name: REPORTING_OPERATOR_LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: log-level
+        - name: REPORTING_OPERATOR_LOG_DML_QUERIES
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: log-dml-queries
+        - name: REPORTING_OPERATOR_LOG_DDL_QUERIES
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: log-ddl-queries
+        - name: REPORTING_OPERATOR_LOG_REPORT
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: log-reports
+        - name: REPORTING_OPERATOR_PROMETHEUS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: prometheus-url
+        - name: REPORTING_OPERATOR_PROMETHEUS_METRICS_IMPORTER_INTERVAL
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: prometheus-metrics-importer-poll-interval
+              optional: true
+        - name: REPORTING_OPERATOR_PROMETHEUS_METRICS_IMPORTER_CHUNK_SIZE
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: prometheus-metrics-importer-chunk-size
+              optional: true
+        - name: REPORTING_OPERATOR_PROMETHEUS_METRICS_IMPORTER_STEP_SIZE
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: prometheus-metrics-importer-step-size
+              optional: true
+        - name: REPORTING_OPERATOR_DISABLE_PROMETHEUS_METRICS_IMPORTER
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: disable-prometheus-metrics-importer
+        - name: REPORTING_OPERATOR_ENABLE_FINALIZERS
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: enable-finalizers
+        - name: REPORTING_OPERATOR_PRESTO_MAX_QUERY_LENGTH
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: presto-max-query-length
+              optional: true
+        - name: REPORTING_OPERATOR_PROMETHEUS_DATASOURCE_MAX_QUERY_RANGE_DURATION
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: prometheus-datasource-max-query-range-duration
+              optional: true
+        - name: REPORTING_OPERATOR_PROMETHEUS_DATASOURCE_MAX_IMPORT_BACKFILL_DURATION
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: prometheus-datasource-max-import-backfill-duration
+              optional: true
+        - name: REPORTING_OPERATOR_PROMETHEUS_DATASOURCE_IMPORT_FROM
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: prometheus-datasource-import-from
+              optional: true
+{{- /* neither specified = no auth used; both specified = error; either = correct & authenticated */ -}}
+{{- if and $operatorValues.spec.config.prometheus.metricsImporter.auth.tokenSecret.enabled $operatorValues.spec.config.prometheus.metricsImporter.auth.useServiceAccountToken  }}
+  {{ fail "cannot use both token from secret and token from service account" }}
+{{- end }}
+        - name: REPORTING_OPERATOR_PROMETHEUS_BEARER_TOKEN_FILE
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: prometheus-bearer-token-file
+              optional: true
+{{- if $operatorValues.spec.config.prometheus.certificateAuthority.useServiceAccountCA }}
+  {{- if $operatorValues.spec.config.prometheus.certificateAuthority.configMap.enabled }}
+    {{ fail "Cannot both use serviceAccount CA and CA from configMap" }}
+  {{- end }}
+        - name: REPORTING_OPERATOR_PROMETHEUS_CA_FILE
+          value: "/var/run/configmaps/service-ca-bundle/service-ca.crt"
+{{- end }}
+{{- if $operatorValues.spec.config.prometheus.certificateAuthority.configMap.enabled }}
+        - name: REPORTING_OPERATOR_PROMETHEUS_CA_FILE
+          value: "/var/run/reporting-operator/ca/{{ $operatorValues.spec.config.prometheus.certificateAuthority.configMap.filename }}"
+{{- end }}
+        - name: REPORTING_OPERATOR_PRESTO_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: presto-host
+{{- if $operatorValues.spec.config.presto.tls.enabled }}
+        - name: REPORTING_OPERATOR_PRESTO_USE_TLS
+          value: "true"
+        - name: REPORTING_OPERATOR_PRESTO_CA_FILE
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: presto-ca-file
+{{- else }}
+        - name: REPORTING_OPERATOR_PRESTO_USE_TLS
+          value: "false"
+{{- end }}
+{{- if $operatorValues.spec.config.presto.auth.enabled }}
+        - name: REPORTING_OPERATOR_PRESTO_USE_AUTH
+          value: "true"
+        - name: REPORTING_OPERATOR_PRESTO_CLIENT_CERT_FILE
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: presto-client-cert-file
+        - name: REPORTING_OPERATOR_PRESTO_CLIENT_KEY_FILE
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: presto-client-key-file
+{{- else }}
+        - name: REPORTING_OPERATOR_PRESTO_USE_AUTH
+          value: "false"
+{{- end }}
+        - name: REPORTING_OPERATOR_HIVE_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: hive-host
+
+{{- if $operatorValues.spec.config.hive.tls.enabled }}
+        - name: REPORTING_OPERATOR_HIVE_USE_TLS
+          value: "true"
+        - name: REPORTING_OPERATOR_HIVE_CA_FILE
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: hive-ca-file
+{{- else }}
+        - name: REPORTING_OPERATOR_HIVE_USE_TLS
+          value: "false"
+{{- end }}
+{{- if $operatorValues.spec.config.hive.auth.enabled }}
+        - name: REPORTING_OPERATOR_HIVE_USE_AUTH
+          value: "true"
+        - name: REPORTING_OPERATOR_HIVE_CLIENT_CERT_FILE
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: hive-client-cert-file
+        - name: REPORTING_OPERATOR_HIVE_CLIENT_KEY_FILE
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: hive-client-key-file
+{{- else }}
+        - name: REPORTING_OPERATOR_HIVE_USE_AUTH
+          value: "false"
+{{- end }}
+        - name: REPORTING_OPERATOR_LEASE_DURATION
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: leader-lease-duration
+{{- if $operatorValues.spec.config.tls.api.enabled }}
+        - name: REPORTING_OPERATOR_TLS_KEY
+          value: "/tls/tls.key"
+        - name: REPORTING_OPERATOR_TLS_CERT
+          value: "/tls/tls.crt"
+{{/* If authProxy is enabled we do not enable TLS on the reporting-operator operator since the proxy will do TLS */}}
+{{- if $operatorValues.spec.authProxy.enabled }}
+        - name: REPORTING_OPERATOR_USE_TLS
+          value: "false"
+{{- else }}
+        - name: REPORTING_OPERATOR_USE_TLS
+          value: "true"
+{{- end }}
+        - name: REPORTING_OPERATOR_METRICS_TLS_KEY
+          value: "/tls/tls.key"
+        - name: REPORTING_OPERATOR_METRICS_TLS_CERT
+          value: "/tls/tls.crt"
+        - name: REPORTING_OPERATOR_METRICS_USE_TLS
+          value: "true"
+{{- end }}
+        - name: REPORTING_OPERATOR_ALL_NAMESPACES
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: all-namespaces
+              optional: true
+        - name: REPORTING_OPERATOR_TARGET_NAMESPACES
+          valueFrom:
+            configMapKeyRef:
+              name: reporting-operator-config
+              key: target-namespaces
+              optional: true
+        - name: REPORTING_OPERATOR_API_LISTEN
+{{- if and $operatorValues.spec.authProxy.enabled .Values.useIPV6Networking }}
+          value: "[::1]:8080"
+{{- else if $operatorValues.spec.authProxy.enabled }}
+          value: 127.0.0.1:8080
+{{- else if .Values.useIPV6Networking }}
+          value: "[::]:8080"
+{{- else }}
+          value: 0.0.0.0:8080
+{{- end }}
+        - name: REPORTING_OPERATOR_METRICS_LISTEN
+{{- if .Values.useIPV6Networking }}
+          value: "[::]:8082"
+{{- else }}
+          value: 0.0.0.0:8082
+{{- end }}
+        - name: REPORTING_OPERATOR_PPROF_LISTEN
+{{- if .Values.useIPV6Networking }}
+          value: "[::1]:6060"
+{{- else }}
+          value: 127.0.0.1:6060
+{{- end }}
+        resources:
+{{ toYaml $operatorValues.spec.resources | indent 10 }}
+        ports:
+        - name: api
+          containerPort: 8080
+        - name: pprof
+          containerPort: 6060
+        - name: metrics
+          containerPort: 8082
+{{/* When using auth-proxy, disable probes against the reporting-operator pod since we'll listen on localhost, and we'll configure to probe the auth proxy pod instead */}}
+{{- if not $operatorValues.spec.authProxy.enabled }}
+        readinessProbe:
+{{ toYaml $operatorValues.spec.readinessProbe | indent 10 }}
+        livenessProbe:
+{{ toYaml $operatorValues.spec.livenessProbe | indent 10 }}
+{{- end }}
+        volumeMounts:
+        - name: reporting-operator-service-ca-bundle
+          mountPath: /var/run/configmaps/service-ca-bundle
+          readOnly: true
+{{- if $operatorValues.spec.config.hive.tls.enabled }}
+        - name: hive-tls
+          mountPath: /var/run/secrets/hive-tls
+{{- if $operatorValues.spec.config.hive.auth.enabled }}
+        - name: hive-auth
+          mountPath: /var/run/secrets/hive-auth
+{{- end }}
+{{- end }}
+{{- if $operatorValues.spec.config.presto.tls.enabled }}
+        - name: presto-tls
+          mountPath: /var/run/secrets/presto-tls
+{{- if $operatorValues.spec.config.presto.auth.enabled }}
+        - name: presto-auth
+          mountPath: /var/run/secrets/presto-auth
+{{- end }}
+{{- end }}
+{{- if $operatorValues.spec.config.tls.api.enabled }}
+        - name: api-tls
+          mountPath: /tls
+{{- end }}
+{{- if $operatorValues.spec.config.prometheus.certificateAuthority.configMap.enabled }}
+        - name: prometheus-certificate-authority
+          mountPath: /var/run/reporting-operator/ca/
+{{- end }}
+{{- if $operatorValues.spec.config.prometheus.metricsImporter.auth.tokenSecret.enabled }}
+        - mountPath: /var/run/reporting-operator/token
+          name: prometheus-bearer-token
+          subPath: token
+{{- end }}
+{{- if and .Values.networking.useGlobalProxyNetworking .Values.networking.proxy.config.trusted_ca_bundle }}
+        - mountPath: /etc/pki/ca-trust/extracted/pem
+          name: reporting-operator-trusted-ca-bundle
+          readOnly: true
+{{- end }}
+{{- if $operatorValues.spec.authProxy.enabled }}
+      - name: reporting-operator-auth-proxy
+        image: "{{ include "reporting-operator-auth-proxy-image" . }}"
+        imagePullPolicy: {{ $operatorValues.spec.authProxy.image.pullPolicy }}
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        args:
+        - -provider=openshift
+{{- if $operatorValues.spec.config.tls.api.enabled }}
+        - -https-address=:8081
+        - -http-address=
+{{- else }}
+        - -https-address=
+        - -http-address=:8081
+{{- end }}
+{{- if .Values.useIPV6Networking }}
+        - -upstream=http://[::1]:8080
+{{- else }}
+        - -upstream=http://127.0.0.1:8080
+{{- end }}
+        - -htpasswd-file=/etc/proxy/htpasswd/auth
+{{- if $operatorValues.spec.config.tls.api.enabled }}
+        - -tls-cert=/etc/tls/tls.crt
+        - -tls-key=/etc/tls/tls.key
+{{- end }}
+        - -client-secret-file=/var/run/secrets/kubernetes.io/serviceaccount/token
+        - -cookie-secret-file=/etc/proxy/cookie-secret/cookie-secret-seed
+        - -request-logging=true
+        - -skip-auth-regex=^/healthy$
+        - -skip-auth-regex=^/ready$
+        - -openshift-ca=/etc/pki/tls/cert.pem
+        - -openshift-ca=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        - -openshift-service-account=reporting-operator
+{{- if $operatorValues.spec.authProxy.authenticatedEmails.enabled }}
+        - -authenticated-emails-file=/etc/proxy/authenticated-emails/emails
+{{- else }}
+        - -email-domain=*
+{{- end }}
+{{- if $operatorValues.spec.authProxy.subjectAccessReview.enabled }}
+        - '-openshift-sar={{- $operatorValues.spec.authProxy.subjectAccessReview.policy | trim -}}'
+{{- end }}
+{{- if $operatorValues.spec.authProxy.delegateURLs.enabled }}
+        - '-openshift-delegate-urls={{- $operatorValues.spec.authProxy.delegateURLs.policy | trim -}}'
+{{- end }}
+{{/* When using the auth-proxy, configure liveness probes correctly to communicate with the proxy using the auth-proxy port */}}
+{{- $_ := set $operatorValues.spec.readinessProbe.httpGet "port" 8081 }}
+{{- $_ := set $operatorValues.spec.livenessProbe.httpGet "port" 8081 }}
+        readinessProbe:
+{{ toYaml $operatorValues.spec.readinessProbe | indent 10 }}
+        livenessProbe:
+{{ toYaml $operatorValues.spec.livenessProbe | indent 10 }}
+        ports:
+        - name: auth-proxy
+          containerPort: 8081
+        resources:
+{{ toYaml $operatorValues.spec.authProxy.resources | indent 10 }}
+        volumeMounts:
+        - name: reporting-operator-service-ca-bundle
+          mountPath: /var/run/configmaps/service-ca-bundle
+          readOnly: true
+{{- if and .Values.networking.useGlobalProxyNetworking .Values.networking.proxy.config.trusted_ca_bundle }}
+        - mountPath: /etc/pki/ca-trust/extracted/pem
+          name: reporting-operator-trusted-ca-bundle
+          readOnly: true
+{{- end }}
+{{- if $operatorValues.spec.config.tls.api.enabled }}
+        - mountPath: /etc/tls
+          name: api-tls
+{{- end }}
+        - mountPath: /etc/proxy/cookie-secret
+          name: cookie-secret
+        - mountPath: /etc/proxy/htpasswd
+          name: htpasswd-secret
+{{- if $operatorValues.spec.authProxy.authenticatedEmails.enabled  }}
+        - mountPath: /etc/proxy/authenticated-emails
+          name: authenticated-emails-secret
+{{- end }}
+{{- end }}{{/* end of authProxy.enabled */}}
+      volumes:
+{{- if and .Values.networking.useGlobalProxyNetworking .Values.networking.proxy.config.trusted_ca_bundle }}
+      - name: reporting-operator-trusted-ca-bundle
+        configMap:
+          name: reporting-operator-trusted-ca-bundle
+          items:
+          - key: ca-bundle.crt
+            path: ca-bundle.crt
+{{- end }}
+      - name: reporting-operator-service-ca-bundle
+        configMap:
+          name: service-ca-bundle
+          optional: true
+{{- if $operatorValues.spec.config.hive.tls.enabled }}
+      - name: hive-tls
+        secret:
+          secretName: {{ $operatorValues.spec.config.hive.tls.secretName }}
+{{- if $operatorValues.spec.config.hive.auth.enabled }}
+      - name: hive-auth
+        secret:
+          secretName: {{ $operatorValues.spec.config.hive.auth.secretName }}
+{{- end }}
+{{- end }}
+{{- if $operatorValues.spec.config.presto.tls.enabled }}
+      - name: presto-tls
+        secret:
+          secretName: {{ $operatorValues.spec.config.presto.tls.secretName }}
+{{- if $operatorValues.spec.config.presto.auth.enabled }}
+      - name: presto-auth
+        secret:
+          secretName: {{ $operatorValues.spec.config.presto.auth.secretName }}
+{{- end }}
+{{- end }}
+{{- if $operatorValues.spec.config.tls.api.enabled }}
+      - name: api-tls
+        secret:
+          secretName: {{ $operatorValues.spec.config.tls.api.secretName }}
+{{- end }}
+{{- if $operatorValues.spec.config.prometheus.certificateAuthority.configMap.enabled }}
+      - name: prometheus-certificate-authority
+        configMap:
+          name: {{ $operatorValues.spec.config.prometheus.certificateAuthority.configMap.name }}
+{{- end }}
+{{- if $operatorValues.spec.authProxy.enabled }}
+      - name: cookie-secret
+        secret:
+          secretName: {{ $operatorValues.spec.authProxy.cookie.secretName }}
+      - name: htpasswd-secret
+        secret:
+          secretName: {{ $operatorValues.spec.authProxy.htpasswd.secretName }}
+{{- if $operatorValues.spec.authProxy.authenticatedEmails.enabled  }}
+      - name: authenticated-emails-secret
+        secret:
+          secretName: {{ $operatorValues.spec.authProxy.authenticatedEmails.secretName }}
+{{- end }}
+{{- end }}
+{{- if $operatorValues.spec.config.prometheus.metricsImporter.auth.tokenSecret.enabled }}
+      - name: prometheus-bearer-token
+        secret:
+          secretName: {{ $operatorValues.spec.config.prometheus.metricsImporter.auth.tokenSecret.name }}
+{{- end }}
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      serviceAccount: reporting-operator
+{{- if $operatorValues.spec.image.pullSecrets }}
+      imagePullSecrets:
+{{ toYaml $operatorValues.spec.image.pullSecrets | indent 8 }}
+{{- end }}

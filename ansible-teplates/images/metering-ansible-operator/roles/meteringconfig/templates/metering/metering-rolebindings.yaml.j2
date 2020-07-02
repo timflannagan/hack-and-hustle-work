@@ -1,0 +1,107 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: metering-admins
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: metering-admin
+subjects:
+{% for perm in meteringconfig_spec.permissions.meteringAdmins %}
+- kind: "{{ perm.kind }}"
+  name: "{{ perm.name }}"
+{% if perm.namespace %}
+  namespace: "{{ perm.namespace }}"
+{% endif %}
+{% if perm.apiGroup %}
+  apiGroup: "{{ perm.apiGroup }}"
+{% endif %}
+{% endfor %}
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: metering-viewers
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: metering-viewer
+subjects:
+{% for perm in meteringconfig_spec.permissions.meteringViewers %}
+- kind: "{{ perm.kind }}"
+  name: "{{ perm.name }}"
+{% if perm.namespace %}
+  namespace: "{{ perm.namespace }}"
+{% endif %}
+{% if perm.apiGroup %}
+  apiGroup: "{{ perm.apiGroup }}"
+{% endif %}
+{% endfor %}
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: reporting-admins
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: reporting-admin
+subjects:
+{% for perm in meteringconfig_spec.permissions.reportingAdmins %}
+- kind: "{{ perm.kind }}"
+  name: "{{ perm.name }}"
+{% if perm.namespace %}
+  namespace: "{{ perm.namespace }}"
+{% endif %}
+{% if perm.apiGroup %}
+  apiGroup: "{{ perm.apiGroup }}"
+{% endif %}
+{% endfor %}
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: reporting-viewers
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: reporting-viewer
+subjects:
+{% for perm in meteringconfig_spec.permissions.reportingViewers %}
+- kind: "{{ perm.kind }}"
+  name: "{{ perm.name }}"
+{% if perm.namespace %}
+  namespace: "{{ perm.namespace }}"
+{% endif %}
+{% if perm.apiGroup %}
+  apiGroup: "{{ perm.apiGroup }}"
+{% endif %}
+{% endfor %}
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: report-exporters
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: report-exporter
+subjects:
+{% for perm in meteringconfig_spec.permissions.reportExporters %}
+- kind: "{{ perm.kind }}"
+  name: "{{ perm.name }}"
+{% if perm.namespace %}
+  namespace: "{{ perm.namespace }}"
+{% endif %}
+{% if perm.apiGroup %}
+  apiGroup: "{{ perm.apiGroup }}"
+{% endif %}
+{% endfor %}

@@ -1,0 +1,145 @@
+---
+
+#
+# Reporting Operator Presto TLS/auth
+#
+- name: Check for the existence of the reporting-operator Presto TLS-related secrets
+  block:
+  - name: Check for the existence of the reporting-operator Presto client auth secret
+    k8s_info:
+      api_version: v1
+      kind: Secret
+      name: "{{ meteringconfig_spec['reporting-operator'].spec.config.presto.auth.secretName }}"
+      namespace: "{{ meta.namespace }}"
+    no_log: true
+    register: reporting_operator_auth_secret_buf
+
+  - name: Configure the reporting-operator to use existing presto server TLS secret data
+    set_fact:
+      _meteringconfig_reporting_operator_presto_server_ca_certificate: "{{ _meteringconfig_tls_root_ca_certificate }}"
+    no_log: true
+
+  - name: Configure the reporting-operator to use existing presto client TLS secret data
+    set_fact:
+      _meteringconfig_reporting_operator_presto_client_ca_certificate: "{{ _meteringconfig_tls_root_ca_certificate }}"
+      _meteringconfig_reporting_operator_presto_client_cert: "{{ reporting_operator_auth_secret_buf.resources[0].data['tls.crt'] | b64decode }}"
+      _meteringconfig_reporting_operator_presto_client_key: "{{ reporting_operator_auth_secret_buf.resources[0].data['tls.key'] | b64decode }}"
+    no_log: true
+    when: reporting_operator_auth_secret_exists
+  vars:
+    reporting_operator_auth_secret_exists: "{{ reporting_operator_auth_secret_buf.resources is defined and reporting_operator_auth_secret_buf.resources | length > 0 }}"
+  when: meteringconfig_tls_enabled
+
+- name: Configure TLS and authentication in the reporting-operator to Presto
+  block:
+  - name: Generate the reporting-operator client certs as needed
+    include_tasks: configure_reporting_operator_openssl.yml
+
+  - name: Configure the reporting-operator to use it's client own cert/key when communicating with Presto
+    set_fact:
+      _meteringconfig_reporting_operator_presto_client_ca_certificate: "{{ _meteringconfig_tls_root_ca_certificate }}"
+      _meteringconfig_reporting_operator_presto_client_cert: "{{ lookup('file', '{{ certificates_dir.path }}/reporting_operator_client.crt') + '\n' }}"
+      _meteringconfig_reporting_operator_presto_client_key: "{{ lookup('file', '{{ certificates_dir.path }}/reporting_operator_client.key') + '\n' }}"
+    no_log: true
+    when: not reporting_operator_auth_secret_exists
+  vars:
+    reporting_operator_auth_secret_exists: "{{ reporting_operator_auth_secret_buf.resources is defined and reporting_operator_auth_secret_buf.resources | length > 0 }}"
+  when: meteringconfig_tls_enabled
+
+#
+# Reporting Operator Hive TLS/auth
+#
+- name: Check for the existence of reporting-operator Hive TLS-related secrets
+  block:
+  - name: Check for the existence of the reporting-operator Hive client auth secret
+    k8s_info:
+      api_version: v1
+      kind: Secret
+      name: "{{ meteringconfig_spec['reporting-operator'].spec.config.hive.auth.secretName }}"
+      namespace: "{{ meta.namespace }}"
+    no_log: true
+    register: reporting_operator_hive_auth_secret_buf
+
+  - name: Configure the reporting-operator to use the Metering Root CA for Hive Server CA
+    set_fact:
+      _meteringconfig_reporting_operator_hive_server_ca_certificate: "{{ _meteringconfig_tls_root_ca_certificate }}"
+    no_log: true
+
+  - name: Configure the reporting-operator to use it's client own cert/key when communicating with Hive
+    set_fact:
+      _meteringconfig_reporting_operator_hive_client_certificate: "{{ lookup('file', '{{ certificates_dir.path }}/reporting_operator_client.crt') + '\n' }}"
+      _meteringconfig_reporting_operator_hive_client_key: "{{ lookup('file', '{{ certificates_dir.path }}/reporting_operator_client.key') + '\n' }}"
+    no_log: true
+    when: not reporting_operator_hive_auth_secret_exists
+
+  - name: Configure the reporting-operator to use the existing client cert/key
+    set_fact:
+      _meteringconfig_reporting_operator_hive_client_certificate: "{{ reporting_operator_hive_auth_secret_buf.resources[0].data['tls.crt'] | b64decode }}"
+      _meteringconfig_reporting_operator_hive_client_key: "{{ reporting_operator_hive_auth_secret_buf.resources[0].data['tls.key'] | b64decode }}"
+    no_log: true
+    when: reporting_operator_hive_auth_secret_exists
+  vars:
+    reporting_operator_hive_auth_secret_exists: "{{ reporting_operator_hive_auth_secret_buf.resources is defined and reporting_operator_hive_auth_secret_buf.resources | length > 0 }}"
+  when: meteringconfig_tls_enabled
+
+#
+# Reporting Operator Openshift Auth-Proxy
+#
+- name: Validate the user-provided authProxy configuration
+  block:
+  - include_tasks: validate_reporting_operator_tls.yml
+  rescue:
+  - include_tasks: update_meteringconfig_status.yml
+    vars:
+      end_play_after_updating_status: true
+      current_conditions:
+        type: "Invalid"
+        status: "True"
+        message: |
+          "{{ ansible_failed_result.msg }}"
+        lastTransitionTime: "{{ now(utc=False).isoformat() + 'Z' }}"
+    when:
+    - ansible_failed_result is defined
+    - ansible_failed_result.msg | length > 0
+  when: not meteringconfig_tls_enabled
+
+- name: Check for the existence of reporting-operator authProxy-related secret data
+  block:
+  - name: Check for the existence of the reporting-operator authProxy cookie seed secret
+    k8s_info:
+      api_version: v1
+      kind: Secret
+      name: "{{ meteringconfig_spec['reporting-operator'].spec.authProxy.cookie.secretName }}"
+      namespace: "{{ meta.namespace }}"
+    no_log: true
+    register: reporting_operator_auth_proxy_cookie_secret_buf
+    when: meteringconfig_tls_enabled
+
+  - name: Generate cookie seed and configuring authProxy to use that generated seed value
+    block:
+    - name: Generate a 32-character random string
+      command: openssl rand -base64 32
+      register: cookie_seed_random_string
+
+    - name: Configure authProxy cookie seed secret
+      set_fact:
+        _meteringconfig_reporting_operator_auth_proxy_cookie_seed: "{{ cookie_seed_random_string.stdout }}"
+      no_log: true
+      when: cookie_seed_random_string is defined
+
+    - name: Verify the randomly generated string is at least 32 characters in length
+      assert:
+        that:
+        - _meteringconfig_reporting_operator_auth_proxy_cookie_seed | length >= 32
+        msg: "Invalid cookie seed generated: the length of the string is less than 32 characters"
+      when: cookie_seed_random_string is defined
+    when: not reporting_operator_auth_proxy_cookie_secret_exists
+
+  - name: Configure authProxy cookie seed secret to use pre-existing secret data
+    set_fact:
+      _meteringconfig_reporting_operator_auth_proxy_cookie_seed: "{{ reporting_operator_auth_proxy_cookie_secret_buf.resources[0].data['cookie-secret-seed'] | b64decode }}"
+    no_log: true
+    when: reporting_operator_auth_proxy_cookie_secret_exists
+  vars:
+    reporting_operator_auth_proxy_cookie_secret_exists: "{{ reporting_operator_auth_proxy_cookie_secret_buf.resources is defined and reporting_operator_auth_proxy_cookie_secret_buf.resources | length > 0 }}"
+  when: meteringconfig_tls_enabled

@@ -1,0 +1,20 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: metering-presto
+  labels:
+    k8s-app: metering-presto
+spec:
+  jobLabel: component
+  endpoints:
+  - port: metrics
+    interval: 30s
+    scheme: "http"
+  selector:
+    matchLabels:
+      app: presto
+  namespaceSelector:
+    matchNames:
+    - {{ .Release.Namespace }}
+{{- end }}

@@ -1,0 +1,20 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: metering-hive
+  labels:
+    k8s-app: metering-hive
+spec:
+  jobLabel: component
+  endpoints:
+  - port: metrics
+    interval: 30s
+    scheme: "http"
+  selector:
+    matchLabels:
+      app: hive
+  namespaceSelector:
+    matchNames:
+    - {{ .Release.Namespace }}
+{{- end }}

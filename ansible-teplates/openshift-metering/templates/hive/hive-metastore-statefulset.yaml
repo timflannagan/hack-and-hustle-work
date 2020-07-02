@@ -1,0 +1,315 @@
+{{/* When using TLS set probes to use the ghostunnel server port */}}
+{{- if .Values.hive.spec.metastore.config.tls.enabled -}}
+{{- $_ := set .Values.hive.spec.metastore.readinessProbe.tcpSocket "port" 9084 -}}
+{{- $_ := set .Values.hive.spec.metastore.livenessProbe.tcpSocket "port" 9084 -}}
+{{- end }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: hive-metastore
+  labels:
+    app: hive
+    hive: metastore
+spec:
+  serviceName: hive-metastore
+  replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: hive
+      hive: metastore
+{{- if .Values.hive.spec.labels }}
+{{ toYaml .Values.hive.spec.labels | indent 6 }}
+{{- end }}
+  template:
+    metadata:
+      labels:
+        app: hive
+        hive: metastore
+{{- if .Values.hive.spec.labels }}
+{{ toYaml .Values.hive.spec.labels | indent 8 }}
+{{- end }}
+      annotations:
+        hive-configmap-hash: {{ include (print $.Template.BasePath "/hive/hive-configmap.yaml") . | sha256sum }}
+        hive-scripts-hash: {{ include (print $.Template.BasePath "/hive/hive-scripts-configmap.yaml") . | sha256sum }}
+        hive-jmx-config-hash: {{ include (print $.Template.BasePath "/hive/hive-jmx-config.yaml") . | sha256sum }}
+{{- if .Values.hive.spec.config.aws.createSecret }}
+        hive-aws-credentials-secret-hash: {{ include (print $.Template.BasePath "/hive/hive-aws-credentials-secret.yaml") . | sha256sum }}
+{{- end }}
+{{- if .Values.hive.spec.config.azure.createSecret }}
+        hive-azure-credentials-secret-hash: {{ include (print $.Template.BasePath "/hive/hive-azure-credentials-secret.yaml") . | sha256sum }}
+{{- end }}
+{{- if .Values.hive.spec.config.gcs.createSecret }}
+        hive-gcs-credentials-secret-hash: {{ include (print $.Template.BasePath "/hive/hive-gcs-credentials-secret.yaml") . | sha256sum }}
+{{- end }}
+{{- if .Values.hive.spec.config.s3Compatible.createSecret }}
+        hive-s3-compatible-credentials-secret-hash: {{ include (print $.Template.BasePath "/hive/hive-s3-compatible-credentials-secret.yaml") . | sha256sum }}
+{{- end }}
+{{- if .Values.hive.spec.config.s3Compatible.ca.createSecret }}
+        hive-s3-compatible-ca-secret-hash: {{ include (print $.Template.BasePath "/hive/hive-s3-compatible-ca-secret.yaml") . | sha256sum }}
+{{- end }}
+{{- if .Values.hive.spec.config.useHadoopConfig }}
+        hadoop-config-hash: {{ include (print $.Template.BasePath "/hadoop/hadoop-config.yaml") . | sha256sum }}
+{{- end }}
+{{- if .Values.hive.spec.annotations }}
+{{ toYaml .Values.hive.spec.annotations | indent 8 }}
+{{- end }}
+    spec:
+      securityContext:
+{{ toYaml .Values.hive.spec.securityContext | indent 8 }}
+{{- if .Values.hive.spec.metastore.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.hive.spec.metastore.nodeSelector | indent 8 }}
+{{- end }}
+{{- if .Values.hive.spec.metastore.tolerations }}
+      tolerations:
+{{ toYaml .Values.hive.spec.metastore.tolerations | indent 8 }}
+{{- end }}
+{{- if .Values.hive.spec.metastore.affinity }}
+      affinity:
+{{ toYaml .Values.hive.spec.metastore.affinity | indent 8 }}
+{{- end }}
+      initContainers:
+      - name: copy-starter-hive
+        image: "{{ include "hive-image" . }}"
+        imagePullPolicy: {{ .Values.hive.spec.image.pullPolicy }}
+        command: ["/hive-scripts/copy-hadoop-config.sh"]
+{{- if or .Values.hive.spec.config.azure.secretName .Values.hive.spec.config.azure.createSecret }}
+        env:
+        - name: AZURE_STORAGE_ACCOUNT_NAME
+          valueFrom:
+            secretKeyRef:
+              name: "{{ .Values.hive.spec.config.azure.secretName | default "hive-azure-credentials" }}"
+              key: azure-storage-account-name
+        - name: AZURE_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: "{{ .Values.hive.spec.config.azure.secretName | default "hive-azure-credentials" }}"
+              key: azure-secret-access-key
+{{- end }}
+        volumeMounts:
+        - name: hadoop-config
+          mountPath: /hadoop-config
+        - name: hadoop-starting-config
+          mountPath: /hadoop-starting-config
+        - name: hive-scripts
+          mountPath: /hive-scripts
+{{- if or .Values.hive.spec.config.gcs.secretName .Values.hive.spec.config.gcs.createSecret }}
+        - name: gcs-json
+          mountPath: /gcs-json
+{{- end }}
+      volumes:
+      - name: hive-scripts
+        configMap:
+          name: hive-scripts
+          defaultMode: 0775
+      containers:
+      - name: metastore
+        command: ["/hive-scripts/entrypoint.sh"]
+        args: ["/opt/hive/bin/hive", "--service", "metastore"]
+        image: "{{ include "hive-image" . }}"
+        imagePullPolicy: {{ .Values.hive.spec.image.pullPolicy }}
+        ports:
+{{- if not .Values.hive.spec.metastore.config.tls.enabled }}
+        - name: meta
+          containerPort: 9083
+{{- end }}
+        - containerPort: 8082
+          name: metrics
+{{- if not .Values.hive.spec.metastore.config.tls.enabled }}
+{{- if .Values.hive.spec.metastore.readinessProbe }}
+        readinessProbe:
+{{ toYaml .Values.hive.spec.metastore.readinessProbe | indent 10 }}
+{{- end }}
+{{- if .Values.hive.spec.metastore.livenessProbe }}
+        livenessProbe:
+{{ toYaml .Values.hive.spec.metastore.livenessProbe | indent 10 }}
+{{- end }}
+{{- end }}
+        env:
+        - name: HIVE_LOGLEVEL
+          value: {{ upper .Values.hive.spec.metastore.config.logLevel | quote}}
+{{- if .Values.hive.spec.metastore.config.jvm.initialRAMPercentage }}
+        - name: JVM_INITIAL_RAM_PERCENTAGE
+          value: "{{ .Values.hive.spec.metastore.config.jvm.initialRAMPercentage }}"
+{{- end }}
+{{- if .Values.hive.spec.metastore.config.jvm.maxRAMPercentage }}
+        - name: JVM_MAX_RAM_PERCENTAGE
+          value: "{{ .Values.hive.spec.metastore.config.jvm.maxRAMPercentage }}"
+{{- end }}
+{{- if .Values.hive.spec.metastore.config.jvm.maxRAMPercentage }}
+        - name: JVM_MIN_RAM_PERCENTAGE
+          value: "{{ .Values.hive.spec.metastore.config.jvm.minRAMPercentage }}"
+{{- end }}
+{{ include "hive-env" . | indent 8 }}
+        - name: MY_MEM_REQUEST
+          valueFrom:
+            resourceFieldRef:
+              containerName: metastore
+              resource: requests.memory
+        - name: MY_MEM_LIMIT
+          valueFrom:
+            resourceFieldRef:
+              containerName: metastore
+              resource: limits.memory
+        volumeMounts:
+        - name: hive-config
+          mountPath: /hive-config
+        - name: hive-scripts
+          mountPath: /hive-scripts
+        - name: hive-service-ca-bundle
+          mountPath: /var/run/configmaps/service-ca-bundle
+          readOnly: true
+{{- if .Values.hive.spec.config.useHadoopConfig }}
+        - name: hadoop-config
+          mountPath: /hadoop-config
+        - name: hadoop-starting-config
+          mountPath: /hadoop-starting-config
+{{- end }}
+{{- if or .Values.hive.spec.config.gcs.secretName .Values.hive.spec.config.gcs.createSecret }}
+        - name: gcs-json
+          mountPath: /gcs-json
+{{- end }}
+{{- if or .Values.hive.spec.config.s3Compatible.ca.secretName .Values.hive.spec.config.s3Compatible.ca.createSecret }}
+        - name: s3-compatible-ca
+          mountPath: /s3-compatible-ca
+{{- end }}
+        - name: hive-jmx-config
+          mountPath: /opt/jmx_exporter/config
+        - name: hive-metastore-db-data
+          mountPath: /var/lib/hive
+        # openshift requires volumeMounts for VOLUMEs in a Dockerfile
+        - name: namenode-empty
+          mountPath: /hadoop/dfs/name
+        - name: datanode-empty
+          mountPath: /hadoop/dfs/data
+        - name: hadoop-logs
+          mountPath: /opt/hadoop/logs
+{{- if .Values.hive.spec.config.sharedVolume.enabled }}
+        - name: hive-warehouse-data
+          mountPath: {{ .Values.hive.spec.config.sharedVolume.mountPath }}
+{{- end }}
+        resources:
+{{ toYaml .Values.hive.spec.metastore.resources | indent 10 }}
+{{- if .Values.hive.spec.metastore.config.tls.enabled }}
+      - name: ghostunnel-server
+        image: "{{ include "ghostunnel-image" . }}"
+        imagePullPolicy: {{ .Values.__ghostunnel.image.pullPolicy }}
+        env:
+        - name: HIVE_METASTORE_CA_CRTFILE
+          value: /opt/hive/tls/ca.crt
+        - name: HIVE_METASTORE_KEYFILE
+          value: /opt/hive/tls/tls.key
+        - name: HIVE_METASTORE_CRTFILE
+          value: /opt/hive/tls/tls.crt
+        command: ["ghostunnel"]
+        args:
+        - server
+        - --listen
+{{- if .Values.useIPV6Networking }}
+        - "[::]:9084"
+{{- else }}
+        - 0.0.0.0:9084
+{{- end }}
+        - --target
+{{- if .Values.useIPV6Networking }}
+        - "[::1]:9083"
+{{- else }}
+        - localhost:9083
+{{- end }}
+        - --key
+        -  $(HIVE_METASTORE_KEYFILE)
+        - --cert
+        - $(HIVE_METASTORE_CRTFILE)
+        - --cacert
+        -  $(HIVE_METASTORE_CA_CRTFILE)
+{{- if .Values.hive.spec.metastore.config.auth.enabled }}
+        - --allow-cn
+        - hive-server
+        - --allow-cn
+        - presto-clients
+{{- else }}
+        - --disable-authentication
+{{- end }}
+        ports:
+        - name: ghostunnel
+          containerPort: 9084
+        volumeMounts:
+        - name: hive-metastore-tls-secret
+          mountPath: /opt/hive/tls
+{{- if .Values.hive.spec.metastore.readinessProbe }}
+        readinessProbe:
+{{ toYaml .Values.hive.spec.metastore.readinessProbe | indent 10 }}
+{{- end }}
+{{- if .Values.hive.spec.metastore.livenessProbe }}
+        livenessProbe:
+{{ toYaml .Values.hive.spec.metastore.livenessProbe | indent 10 }}
+{{- end }}
+
+{{- end }}
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      terminationGracePeriodSeconds: {{ .Values.hive.spec.terminationGracePeriodSeconds }}
+      serviceAccount: hive
+{{- if .Values.hive.spec.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.hive.spec.imagePullSecrets | indent 8 }}
+{{- end }}
+      volumes:
+      - name: hive-config
+        configMap:
+          name: hive-config
+      - name: hive-scripts
+        configMap:
+          name: hive-scripts
+          defaultMode: 0775
+      - name: hive-service-ca-bundle
+        configMap:
+          name: service-ca-bundle
+          optional: true
+{{- if .Values.hive.spec.config.useHadoopConfig }}
+      - name: hadoop-config
+        emptyDir: {}
+      - name: hadoop-starting-config
+        secret:
+          secretName: {{ .Values.hive.spec.config.hadoopConfigSecretName  }}
+{{- end }}
+{{- if or .Values.hive.spec.config.gcs.secretName .Values.hive.spec.config.gcs.createSecret }}
+      - name: gcs-json
+        secret:
+          secretName: {{ .Values.hive.spec.config.gcs.secretName | default "hive-gcs-credentials" }}
+{{- end }}
+{{- if or .Values.hive.spec.config.s3Compatible.ca.secretName .Values.hive.spec.config.s3Compatible.ca.createSecret }}
+      - name: s3-compatible-ca
+        secret:
+          secretName: {{ .Values.hive.spec.config.s3Compatible.ca.secretName | default "hive-s3-compatible-ca" }}
+{{- end }}
+      - name: hive-jmx-config
+        configMap:
+          name: hive-jmx-config
+      # these emptyDir volumes are necessary because Openshift requires VOLUMEs
+      # in a Dockerfile have a corresponding volumeMount
+      - name: namenode-empty
+        emptyDir: {}
+      - name: datanode-empty
+        emptyDir: {}
+      - name: hadoop-logs
+        emptyDir: {}
+      - name: hive-metastore-db-data
+{{- if .Values.hive.spec.metastore.storage.create }}
+        persistentVolumeClaim:
+          claimName: hive-metastore-db-data
+{{- else }}
+        emptyDir: {}
+{{- end }}
+{{- if .Values.hive.spec.config.sharedVolume.enabled }}
+      - name: hive-warehouse-data
+        persistentVolumeClaim:
+          claimName: {{ .Values.hive.spec.config.sharedVolume.claimName }}
+{{- end}}
+{{- if .Values.hive.spec.metastore.config.tls.enabled }}
+      - name: hive-metastore-tls-secret
+        secret:
+          secretName: {{ .Values.hive.spec.metastore.config.tls.secretName }}
+{{- end }}

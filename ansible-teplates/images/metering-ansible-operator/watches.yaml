@@ -1,0 +1,9 @@
+---
+- version: v1
+  group: metering.openshift.io
+  kind: MeteringConfig
+  # role: /home/tflannag/metering/images/metering-ansible-operator/roles/meteringconfig
+  role: /opt/ansible/roles/meteringconfig
+  watchDependentResources: false
+  reconcilePeriod: 5m
+  manageStatus: false
