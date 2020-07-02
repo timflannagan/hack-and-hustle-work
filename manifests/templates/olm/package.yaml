@@ -1,3 +1,0 @@
-packageName: {{ .Values.olm.packageName }}
-channels:
-{{ toYaml .Values.olm.channels }}
