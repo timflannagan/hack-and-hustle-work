@@ -1,0 +1,42 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  name: metering-operator.v4.6.0
+  namespace: placeholder
+  annotations:
+    categories: "OpenShift Optional, Monitoring"
+    certified: "false"
+    capabilities: Seamless Upgrades
+    createdAt: "2019-01-01T11:59:59Z"
+    containerImage: "quay.io/coreos/metering-ansible-operator:release-4.6"
+spec:
+  links:
+    - name: Documentation
+      url: https://github.com/kube-reporting/metering-operator/blob/master/Documentation/index.md
+  install:
+    spec:
+      deployments:
+        - name: metering-operator
+          spec:
+            template:
+              spec:
+                containers:
+                - name: ansible
+                  image: "quay.io/coreos/metering-ansible-operator:release-4.6"
+                - name: operator
+                  image: "quay.io/coreos/metering-ansible-operator:release-4.6"
+                  env:
+                  - name: DISABLE_OCP_FEATURES
+                    value: "true"
+                  - name: METERING_ANSIBLE_OPERATOR_IMAGE
+                    value: "quay.io/coreos/metering-ansible-operator:release-4.6"
+                  - name: METERING_REPORTING_OPERATOR_IMAGE
+                    value: "quay.io/coreos/metering-reporting-operator:release-4.6"
+                  - name: METERING_PRESTO_IMAGE
+                    value: "quay.io/coreos/metering-presto:release-4.6"
+                  - name: METERING_HIVE_IMAGE
+                    value: "quay.io/coreos/metering-hive:release-4.6"
+                  - name: METERING_HADOOP_IMAGE
+                    value: "quay.io/coreos/metering-hadoop:release-4.6"
+                  - name: GHOSTUNNEL_IMAGE
+                    value: "quay.io/coreos/metering-ghostunnel:release-4.6"

@@ -1,0 +1,16 @@
+namePrefix: upstream-
+commonLabels:
+  variant: upstream
+bases:
+- ../../base
+patchesStrategicMerge:
+- coreos_images.yaml
+
+# patchesJson6902:
+# - target:
+#     group: operators.coreos.com
+#     version: v1alpha1
+#     kind: ClusterServiceVersion
+#     name: metering-operator.v4.6.0
+#     namespace: placeholder
+#   path: update-csv-images-patch.yaml

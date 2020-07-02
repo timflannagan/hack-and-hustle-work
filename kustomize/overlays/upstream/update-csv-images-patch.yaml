@@ -1,0 +1,9 @@
+- op: replace
+  path: /spec/install/spec/deployments/0/spec/template/spec/containers/0/image
+  value: quay.io/coreos/metering-ansible-operator:release-4.6
+- op: replace
+  path: /spec/install/spec/deployments/0/spec/template/spec/containers/1/image
+  value: quay.io/coreos/metering-ansible-operator:release-4.6
+- op: replace
+  path: /metadata/annotations/containerImage
+  value: quay.io/coreos/metering-ansible-operator:release-4.6
