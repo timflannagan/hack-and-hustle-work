@@ -1,0 +1,292 @@
+# A headless service to create DNS records.
+apiVersion: v1
+kind: Service
+metadata:
+  name: hdfs-namenode
+  labels:
+    app: hdfs
+    hdfs: namenode
+    component: hdfs-namenode
+spec:
+  ports:
+  - port: 9820
+    name: fs
+  - port: 9870
+    name: web
+  - port: 8082
+    name: metrics
+  clusterIP: None
+  selector:
+    app: hdfs
+    hdfs: namenode
+
+---
+
+# A clusterIP service for the web interface.
+apiVersion: v1
+kind: Service
+metadata:
+  name: hdfs-namenode-web
+  labels:
+    app: hdfs
+    hdfs: namenode
+    component: hdfs-namenode
+spec:
+  ports:
+  - port: 9870
+    name: web
+  selector:
+    app: hdfs
+    hdfs: namenode
+
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: hdfs-namenode
+  labels:
+    app: hdfs
+    hdfs: namenode
+spec:
+  serviceName: "hdfs-namenode"
+  replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: hdfs
+      hdfs: namenode
+{{- if .Values.hadoop.spec.hdfs.namenode.labels }}
+{{ toYaml .Values.hadoop.spec.hdfs.namenode.labels | indent 6 }}
+{{- end }}
+  template:
+    metadata:
+      labels:
+        app: hdfs
+        hdfs: namenode
+{{- if .Values.hadoop.spec.hdfs.namenode.labels }}
+{{ toYaml .Values.hadoop.spec.hdfs.namenode.labels | indent 8 }}
+{{- end }}
+      annotations:
+        hadoop-config-hash: {{ include (print $.Template.BasePath "/hadoop/hadoop-config.yaml") . | sha256sum }}
+        hadoop-scripts-hash: {{ include (print $.Template.BasePath "/hadoop/hadoop-scripts.yaml") . | sha256sum }}
+        hdfs-jmx-config-hash: {{ include (print $.Template.BasePath "/hadoop/hdfs-jmx-config.yaml") . | sha256sum }}
+{{- if .Values.hadoop.spec.config.aws.createSecret }}
+        hadoop-aws-credentials-hash: {{ include (print $.Template.BasePath "/hadoop/hadoop-aws-credentials.yaml") . | sha256sum }}
+{{- end }}
+{{- if .Values.hadoop.spec.config.azure.createSecret }}
+        hadoop-azure-credentials-hash: {{ include (print $.Template.BasePath "/hadoop/hadoop-azure-credentials.yaml") . | sha256sum }}
+{{- end }}
+{{- if .Values.hadoop.spec.config.gcs.createSecret }}
+        hadoop-gcs-credentials-secret-hash: {{ include (print $.Template.BasePath "/hadoop/hadoop-gcs-credentials-secret.yaml") . | sha256sum }}
+{{- end }}
+{{- if .Values.hadoop.spec.config.s3Compatible.createSecret }}
+        hadoop-s3-compatible-credentials-hash: {{ include (print $.Template.BasePath "/hadoop/hadoop-s3-compatible-credentials.yaml") . | sha256sum }}
+{{- end }}
+{{- if .Values.hadoop.spec.config.s3Compatible.ca.createSecret }}
+        hadoop-s3-compatible-ca-secret-hash: {{ include (print $.Template.BasePath "/hadoop/hadoop-s3-compatible-ca-secret.yaml") . | sha256sum }}
+{{- end }}
+{{- if .Values.hadoop.spec.hdfs.namenode.annotations }}
+{{ toYaml .Values.hadoop.spec.hdfs.namenode.annotations | indent 8 }}
+{{- end }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.hadoop.spec.hdfs.namenode.terminationGracePeriodSeconds }}
+{{- if .Values.hadoop.spec.hdfs.securityContext }}
+      securityContext:
+{{ toYaml .Values.hadoop.spec.hdfs.securityContext | indent 8 }}
+{{- end }}
+{{- if .Values.hadoop.spec.hdfs.namenode.affinity }}
+      affinity:
+{{ toYaml .Values.hadoop.spec.hdfs.namenode.affinity | indent 8 }}
+{{- end }}
+{{- if .Values.hadoop.spec.hdfs.namenode.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.hadoop.spec.hdfs.namenode.nodeSelector | indent 8 }}
+{{- end }}
+{{- if .Values.hadoop.spec.hdfs.namenode.tolerations }}
+      tolerations:
+{{ toYaml .Values.hadoop.spec.hdfs.namenode.tolerations | indent 8 }}
+{{- end }}
+      initContainers:
+      - name: copy-starter-hadoop
+        image: "{{ include "hadoop-image" . }}"
+        imagePullPolicy: {{ .Values.hadoop.spec.image.pullPolicy }}
+        command: ["/hadoop-scripts/copy-hadoop-config.sh"]
+        env:
+{{- if or .Values.hadoop.spec.config.azure.secretName .Values.hadoop.spec.config.azure.createSecret }}
+        - name: AZURE_STORAGE_ACCOUNT_NAME
+          valueFrom:
+            secretKeyRef:
+              name: "{{ .Values.hadoop.spec.config.azure.secretName | default "hadoop-azure-credentials" }}"
+              key: azure-storage-account-name
+        - name: AZURE_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: "{{ .Values.hadoop.spec.config.azure.secretName | default "hadoop-azure-credentials" }}"
+              key: azure-secret-access-key
+{{- end }}
+        volumeMounts:
+        - name: hadoop-config
+          mountPath: /hadoop-config
+        - name: hadoop-starting-config
+          mountPath: /hadoop-starting-config
+        - name: hadoop-scripts
+          mountPath: /hadoop-scripts
+{{- if or .Values.hadoop.spec.config.gcs.secretName .Values.hadoop.spec.config.gcs.createSecret }}
+        - name: gcs-json
+          mountPath: /gcs-json
+{{- end }}
+      containers:
+      - name: hdfs-namenode
+        image: "{{ include "hadoop-image" . }}"
+        imagePullPolicy: {{ .Values.hadoop.spec.image.pullPolicy }}
+        command: ["/hadoop-scripts/entrypoint.sh"]
+        args: ["/hadoop-scripts/namenode-entrypoint.sh"]
+        env:
+        - name: CLUSTER_NAME
+          value: hdfs-k8s
+        - name: HADOOP_LOGLEVEL
+          value: "{{ upper .Values.hadoop.spec.hdfs.config.logLevel }}"
+{{- if or .Values.hadoop.spec.config.aws.secretName .Values.hadoop.spec.config.aws.createSecret }}
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: "{{ .Values.hadoop.spec.config.aws.secretName | default "hadoop-aws-credentials" }}"
+              key: aws-access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: "{{ .Values.hadoop.spec.config.aws.secretName | default "hadoop-aws-credentials" }}"
+              key: aws-secret-access-key
+{{- end }}
+{{- if .Values.hadoop.spec.config.s3Compatible.endpoint }}
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: "{{ .Values.hadoop.spec.config.s3Compatible.secretName | default "hadoop-s3-compatible-credentials" }}"
+              key: aws-access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: "{{ .Values.hadoop.spec.config.s3Compatible.secretName | default "hadoop-s3-compatible-credentials" }}"
+              key: aws-secret-access-key
+{{- end }}
+        - name: MY_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MY_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: MY_MEM_REQUEST
+          valueFrom:
+            resourceFieldRef:
+              containerName: hdfs-namenode
+              resource: requests.memory
+        - name: MY_MEM_LIMIT
+          valueFrom:
+            resourceFieldRef:
+              containerName: hdfs-namenode
+              resource: limits.memory
+{{- if .Values.hadoop.spec.hdfs.namenode.config.jvm.initialRAMPercentage }}
+        - name: JVM_INITIAL_RAM_PERCENTAGE
+          value: "{{ .Values.hadoop.spec.hdfs.namenode.config.jvm.initialRAMPercentage }}"
+{{- end }}
+{{- if .Values.hadoop.spec.hdfs.namenode.config.jvm.maxRAMPercentage }}
+        - name: JVM_MAX_RAM_PERCENTAGE
+          value: "{{ .Values.hadoop.spec.hdfs.namenode.config.jvm.maxRAMPercentage }}"
+{{- end }}
+{{- if .Values.hadoop.spec.hdfs.namenode.config.jvm.maxRAMPercentage }}
+        - name: JVM_MIN_RAM_PERCENTAGE
+          value: "{{ .Values.hadoop.spec.hdfs.namenode.config.jvm.minRAMPercentage }}"
+{{- end }}
+        ports:
+        - containerPort: 9820
+          name: fs
+        - containerPort: 9870
+          name: web
+        - containerPort: 8082
+          name: metrics
+        volumeMounts:
+        - name: hadoop-config
+          mountPath: /hadoop-config
+        - name: hadoop-starting-config
+          mountPath: /hadoop-starting-config
+        - name: hadoop-scripts
+          mountPath: /hadoop-scripts
+        - name: hdfs-jmx-config
+          mountPath: /opt/jmx_exporter/config
+        - name: hdfs-service-ca-bundle
+          mountPath: /var/run/configmaps/service-ca-bundle
+          readOnly: true
+{{- if or .Values.hadoop.spec.config.s3Compatible.ca.secretName .Values.hadoop.spec.config.s3Compatible.ca.createSecret }}
+        - name: s3-compatible-ca
+          mountPath: /s3-compatible-ca
+{{- end }}
+        - name: hdfs-namenode-data
+          mountPath: /hadoop/dfs/name
+          # we use a subPath to avoid the lost+found directory at the root of
+          # the volume effecting the hdfs formating
+          subPath: hadoop/dfs/name
+        # required for openshift
+        - name: datanode-empty
+          mountPath: /hadoop/dfs/data
+        - name: hadoop-logs
+          mountPath: /opt/hadoop/logs
+        resources:
+{{ toYaml .Values.hadoop.spec.hdfs.namenode.resources | indent 10 }}
+      serviceAccount: hdfs
+{{- if .Values.hadoop.spec.image.pullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.hadoop.spec.image.pullSecrets | indent 8 }}
+{{- end }}
+      volumes:
+      - name: hadoop-config
+        emptyDir: {}
+      - name: hadoop-starting-config
+        secret:
+          secretName: "{{ .Values.hadoop.spec.configSecretName }}"
+          defaultMode: 0775
+      - name: hadoop-scripts
+        configMap:
+          name: hadoop-scripts
+          defaultMode: 0775
+      - name: hdfs-jmx-config
+        configMap:
+          name: hdfs-jmx-config
+      - name: hdfs-service-ca-bundle
+        configMap:
+          name: service-ca-bundle
+          optional: true
+      - name: datanode-empty
+        emptyDir: {}
+      - name: hadoop-logs
+        emptyDir: {}
+{{- if or .Values.hadoop.spec.config.gcs.secretName .Values.hadoop.spec.config.gcs.createSecret }}
+      - name: gcs-json
+        secret:
+          secretName: "{{ .Values.hadoop.spec.config.gcs.secretName | default "hadoop-gcs-credentials" }}"
+{{- end }}
+{{- if or .Values.hadoop.spec.config.s3Compatible.ca.secretName .Values.hadoop.spec.config.s3Compatible.ca.createSecret }}
+      - name: s3-compatible-ca
+        secret:
+          secretName: {{ .Values.hadoop.spec.config.s3Compatible.ca.secretName | default "hadoop-s3-compatible-ca" }}
+{{- end }}
+  volumeClaimTemplates:
+  - metadata:
+      name: "hdfs-namenode-data"
+      labels:
+        app: hdfs
+        hdfs: namenode
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: {{ .Values.hadoop.spec.hdfs.namenode.storage.class }}
+      resources:
+        requests:
+          storage: {{ .Values.hadoop.spec.hdfs.namenode.storage.size }}

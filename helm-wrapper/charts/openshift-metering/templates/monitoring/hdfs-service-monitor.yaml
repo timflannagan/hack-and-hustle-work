@@ -1,0 +1,20 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: metering-hdfs
+  labels:
+    k8s-app: metering-hdfs
+spec:
+  jobLabel: component
+  endpoints:
+  - port: metrics
+    interval: 30s
+    scheme: "http"
+  selector:
+    matchLabels:
+      app: hdfs
+  namespaceSelector:
+    matchNames:
+    - {{ .Release.Namespace }}
+{{- end }}

@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hive-server
+  labels:
+    app: hive
+    hive: server
+spec:
+  ports:
+  - name: thrift
+    port: 10000
+{{- if .Values.hive.spec.server.config.tls.enabled }}
+    targetPort: ghostunnel
+{{- else }}
+    targetPort: thrift
+{{- end }}
+  - name: ui
+    port: 10002
+  - name: metrics
+    port: 8082
+  selector:
+    app: hive
+    hive: server
+  sessionAffinity: None
+  type: ClusterIP

@@ -1,0 +1,120 @@
+operator:
+  name: metering-operator
+
+  useTargetNamespacesDownwardAPIValueFrom: false
+
+  disableOCPFeatures: true
+
+  image:
+    repository: quay.io/coreos/metering-ansible-operator
+    tag: release-4.7
+    pullPolicy: Always
+
+olm:
+  packageName: metering-upstream
+  channels:
+  - name: "4.7"
+    currentCSV: metering-operator-upstream.v4.7.0
+
+  skipARTPackage: true
+
+  imageTags:
+  - name: metering-ansible-operator
+    from:
+      kind: DockerImage
+      name: quay.io/coreos/metering-ansible-operator:release-4.7
+  - name: metering-reporting-operator
+    from:
+      kind: DockerImage
+      name: quay.io/coreos/metering-reporting-operator:release-4.7
+  - name: metering-presto
+    from:
+      kind: DockerImage
+      name: quay.io/coreos/presto:release-4.7
+  - name: metering-hive
+    from:
+      kind: DockerImage
+      name: quay.io/coreos/hive:release-4.7
+  - name: metering-hadoop
+    from:
+      kind: DockerImage
+      name: quay.io/coreos/hadoop:release-4.7
+  - name: ghostunnel
+    from:
+      kind: DockerImage
+      name: quay.io/coreos/metering-ghostunnel:release-4.7
+
+  csv:
+    name : metering-operator-upstream.v4.7.0
+    version: "4.7.0"
+    minKubeVersion: 1.18.3
+
+    description: |
+      The Metering Operator is a generic reporting tool to provide accountability for how resources are used across a cluster cherry-picking and storing information from different sources. Cluster admins can schedule reports based on historical usage data by Pod, Namespace, and Cluster for storage. The Metering Operator is a part of the [Kubernetes Reporting organization](https://github.com/kube-reporting).
+
+      Read the user guide for more details on [running and viewing your first report](https://docs.openshift.com/container-platform/4.7/metering/metering-using-metering.html).
+
+      ### Core capabilities
+
+      * **Long term storage** - Break down the reserved and utlized resources requested by applications and store the information as long as needed.
+
+      * **Pod, Namespace & Cluster Reports** - Built in reports exist to break down CPU and RAM in any way you desire.
+
+      * **Scheduled Reports** - Schedule reports to run on a standard interval, eg. daily or monthly. Use these reports, for instance, as the basis for chargeback and showback.
+
+      * **Post-Processing** - Reports are generated in either CSV, JSON, or tabular formatting and stored in persistent storage for further post-processing. Use this to send reminder emails, integrate into your ERP system, or graph on a dashboard.
+
+      * **Roll-up reports** - Reports can be used as a source for other reports, allowing for more complex queries that span longer periods than those supported by the data source.
+
+      * **HTTP API** - Reports can be queried from an in-cluster HTTP API in addition to reading from persistent storage.
+
+      * **Integration with AWS EC2 billing** - Connect metering to AWS to calculate the EC2 costs of your resources.
+
+      ### Before you start
+
+      Metering runs a big data stack to crunch your data and requires at least 4GB of RAM and 4 CPU cores.
+      At least one Node should have 2GB of RAM and 2 CPU cores.
+      Memory and CPU consumption may often be lower, but will spike when running reports, or collecting data for larger clusters.
+
+      Metering requires configuring storage, please review the [configuring persistent storage documentation](https://docs.openshift.com/container-platform/4.7/metering/configuring-metering/metering-configure-persistent-storage.html) before proceeding.
+
+      ### Common Configurations
+
+      * **Store data in object storage or in a PersistentVolume** - Store your report output [in an object storage bucket or in a PersistentVolume](https://docs.openshift.com/container-platform/4.7/metering/configuring-metering/metering-configure-persistent-storage.html).
+
+      * **Configure AWS Billing Data Source** - Assign Pod $$ costs on using your [AWS billing reports stored in S3](https://docs.openshift.com/container-platform/4.7/metering/configuring-metering/metering-configure-aws-billing-correlation.html).
+
+      * **Use Reports** - Customize what how you process data. [Specify what you want to report on, set the schedule, and reporting time period](https://docs.openshift.com/container-platform/4.7/metering/reports/metering-about-reports.html#metering-reports_metering-about-reports).
+
+    icon:
+      - base64data: PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB3aWR0aD0iMTQ2cHgiIGhlaWdodD0iMTQ2cHgiIHZpZXdCb3g9IjAgMCAxNDYgMTQ2IiB2ZXJzaW9uPSIxLjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiPgogICAgPHRpdGxlPkFydGJvYXJkPC90aXRsZT4KICAgIDxnIGlkPSJBcnRib2FyZCIgc3Ryb2tlPSJub25lIiBzdHJva2Utd2lkdGg9IjEiIGZpbGw9Im5vbmUiIGZpbGwtcnVsZT0iZXZlbm9kZCI+CiAgICAgICAgPGNpcmNsZSBpZD0iT3ZhbCIgc3Ryb2tlPSIjNDA4MDkxIiBzdHJva2Utd2lkdGg9IjQiIGZpbGw9IiMzQTQxNEEiIGN4PSI3MyIgY3k9IjczIiByPSI1NSI+PC9jaXJjbGU+CiAgICAgICAgPGcgaWQ9Ikdyb3VwLTIiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDM2LjAwMDAwMCwgNDYuMDAwMDAwKSI+CiAgICAgICAgICAgIDxwb2x5bGluZSBpZD0iUGF0aC0yIiBzdHJva2U9IiNGQkNCN0UiIHN0cm9rZS13aWR0aD0iNCIgcG9pbnRzPSI3MC4wNzM3MjA4IDEyLjM4OTIzODMgNTYuODk3NDczNCAyNy42NjQwMjM3IDM4LjA0NzM2NyAtNS4yNjg5NjQ4NmUtMTQgLTcuMTA1NDI3MzZlLTE1IDUzLjE3MjMyNjggMTEuMzkwODgyOCA1My4xNzIzMjY4IDM4LjA0NzM2NyAxNi4wMjE1IDU2Ljg5NzQ3MzQgNDIuNjIyODgwNCA3MC4wNzM3MjA4IDI3LjY2NDAyMzciPjwvcG9seWxpbmU+CiAgICAgICAgICAgIDxnIGlkPSJHcm91cCIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoNjYuMDAwMDAwLCA3LjAwMDAwMCkiIGZpbGw9IiNGQkNCN0UiPgogICAgICAgICAgICAgICAgPHBhdGggZD0iTTUsMTAgQzcuNzYxNDIzNzUsMTAgMTAsNy43NjE0MjM3NSAxMCw1IEMxMCwyLjIzODU3NjI1IDcuNzYxNDIzNzUsMCA1LDAgQzIuMjM4NTc2MjUsMCAwLDIuMjM4NTc2MjUgMCw1IEMwLDcuNzYxNDIzNzUgMi4yMzg1NzYyNSwxMCA1LDEwIFoiIGlkPSJPdmFsIj48L3BhdGg+CiAgICAgICAgICAgICAgICA8Y2lyY2xlIGlkPSJPdmFsIiBjeD0iNSIgY3k9IjIwIiByPSI1Ij48L2NpcmNsZT4KICAgICAgICAgICAgPC9nPgogICAgICAgIDwvZz4KICAgIDwvZz4KPC9zdmc+
+        mediatype: image/svg+xml
+
+    links:
+    - name: Documentation
+      url: https://github.com/kube-reporting/metering-operator/blob/master/Documentation/index.md
+
+    maintainers:
+    - name: Red Hat
+      email: sd-operator-metering@redhat.com
+    provider:
+      name: Red Hat
+
+    annotations:
+      categories: "OpenShift Optional, Monitoring"
+      certified: "false"
+      capabilities: Basic Install
+      support: Red Hat, Inc.
+      createdAt: "2019-01-01T11:59:59Z"
+      containerImage: "quay.io/coreos/metering-ansible-operator:4.7"
+
+  subscriptionName: metering
+  subscriptionChannel: "4.7"
+  catalogSourceConfigMapName: metering-upstream
+  catalogSourceName: metering-upstream-dev
+  catalogSourceNamespace: marketplace
+  catalogSourceTargetNamespace: metering
+  operatorGroupName: metering-operators
+  operatorGroupNamespace: metering
+  operatorGroupTargetNamespaces: ["metering"]
+  telemeterManifestGeneration: false
