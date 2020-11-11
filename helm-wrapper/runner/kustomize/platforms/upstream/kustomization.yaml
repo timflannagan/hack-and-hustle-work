@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+bases:
+  - ../../operator
+
+images:
+- name: quay.io/openshift/origin-metering-ansible-operator
+  newName: quay.io/coreos/metering-ansible-operator
+  newTag: release-4.7
+
+namespace: metering
+
+patches:
+- update-images.yaml
+
+resources:
+  - namespace.yaml
