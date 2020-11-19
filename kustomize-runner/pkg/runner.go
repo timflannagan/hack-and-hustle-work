@@ -60,6 +60,7 @@ func (r *Runner) Run() error {
 	}
 
 	fmt.Println("Finished rendering YAML manifests")
+	return nil
 }
 
 func splitKustomizeManifest(outputDir string, manifests []byte) error {

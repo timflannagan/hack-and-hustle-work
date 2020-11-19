@@ -5,6 +5,15 @@ namespace: openshift-metering
 
 bases:
   - ../../operator
+  - ../../olm
+
+# Changes:
+# containerImage
+# name of csv
+# capabilities
+# url
+# base64data
+# metering deployment images
 
 resources:
   - namespace.yaml
